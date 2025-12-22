@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lottie Inspector Ultimate</title>
+    
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='128' fill='%236c5ce7'/%3E%3Cpath d='M160 120v272l232-136z' fill='white'/%3E%3C/svg%3E" type="image/svg+xml">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+    <style>
+        /* --- GLOBAL VARIABLES --- */
+        :root {
+            --bg-dark: #09090b;
+            --bg-panel: #18181b;
+            --bg-header: #18181b;
+            --border: #27272a;
+            --accent: #8b5cf6;
+            --accent-hover: #7c3aed;
+            --text-main: #e4e4e7;
+            --text-sub: #a1a1aa;
+            --success: #10b981;
+            --error: #ef4444;
+            --warning: #f59e0b;
+            --ios-color: #3b82f6;
+            --android-color: #22c55e;
+            --web-color: #f97316;
+            --highlight-border: #8b5cf6;
+        }
+
+        * { box-sizing: border-box; user-select: none; outline: none; }
+
+        html, body {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: var(--bg-dark); color: var(--text-main);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            overflow: hidden; display: flex; flex-direction: column;
+        }
+
+        /* --- HEADER --- */
+        header {
+            height: 52px; background-color: rgba(24, 24, 27, 0.8);
+            backdrop-filter: blur(12px);
+            display: grid; grid-template-columns: 200px 1fr 250px;
+            align-items: center; padding: 0 20px; 
+            border-bottom: 1px solid var(--border); flex-shrink: 0; z-index: 100;
+        }
+
+        .brand { font-size: 14px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 10px; letter-spacing: -0.01em; }
+        .brand svg { width: 22px; height: 22px; filter: drop-shadow(0 0 6px rgba(139, 92, 246, 0.4)); }
+
+        .header-center { 
+            display: flex; justify-content: center; gap: 4px; 
+            background: #27272a; padding: 3px; border-radius: 8px; 
+            width: fit-content; margin: 0 auto; border: 1px solid #3f3f46; 
+        }
+        .mode-tab {
+            background: transparent; border: none; color: #a1a1aa; padding: 4px 16px; 
+            font-size: 12px; cursor: pointer; border-radius: 6px; transition: all 0.2s; font-weight: 500;
+        }
+        .mode-tab:hover { color: #fff; }
+        .mode-tab.active { background: #3f3f46; color: #fff; cursor: default; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+
+        .header-right { display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
+        .edit-specific-controls { display: flex; align-items: center; gap: 12px; }
+
+        .check-toolbar { display: flex; gap: 6px; background: transparent; padding: 0; }
+        .check-btn { 
+            background: #27272a; border: 1px solid #3f3f46;
+            color: var(--text-sub); padding: 5px 12px; font-size: 11px; 
+            cursor: pointer; border-radius: 6px; transition: all 0.2s; 
+            display: flex; align-items: center; gap: 6px; font-weight: 500;
+        }
+        .check-btn svg { width: 14px; height: 14px; }
+        .check-btn:hover { border-color: #52525b; color: #fff; }
+        .check-btn.active-ios { background: rgba(59, 130, 246, 0.15); border-color: var(--ios-color); color: var(--ios-color); }
+        .check-btn.active-android { background: rgba(34, 197, 94, 0.15); border-color: var(--android-color); color: var(--android-color); }
+        .check-btn.active-web { background: rgba(249, 115, 22, 0.15); border-color: var(--web-color); color: var(--web-color); }
+        
+        .save-btn {
+            background-color: var(--accent); color: white;
+            border: 1px solid rgba(255,255,255,0.1); padding: 0 14px; border-radius: 6px;
+            font-size: 12px; cursor: pointer; height: 28px; line-height: 26px;
+            white-space: nowrap; display: none; font-weight: 500;
+            box-shadow: 0 0 10px rgba(139, 92, 246, 0.3); transition: all 0.2s;
+        }
+        .save-btn:hover { background-color: var(--accent-hover); transform: translateY(-1px); }
+        #fileInput { display: none; }
+
+        /* --- MAIN LAYOUT --- */
+        .main-container {
+            display: flex; flex: 1; width: 100%; height: calc(100vh - 52px);
+            position: relative; overflow: hidden;
+        }
+
+        #standard-view { display: flex; width: 100%; height: 100%; }
+
+        .preview-area {
+            flex: 1; position: relative; display: flex; flex-direction: column;
+            background-color: #000;
+            background-image: radial-gradient(#27272a 1px, transparent 1px); background-size: 24px 24px;
+            overflow: hidden; min-width: 300px;
+        }
+
+        #lottie-player {
+            width: 100%; height: 100%; display: flex; justify-content: center; align-items: center;
+            overflow: hidden; position: relative; padding-bottom: 90px;
+        }
+
+        /* --- UI UPGRADE: Player Controls --- */
+        .player-controls {
+            position: absolute; bottom: 30px; left: 50%; 
+            transform: translateX(-50%) translateY(30px);
+            width: 90%; max-width: 720px;
+            background: rgba(24, 24, 27, 0.75);
+            backdrop-filter: blur(12px) saturate(180%);
+            -webkit-backdrop-filter: blur(12px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 12px 24px;
+            display: flex; align-items: center; gap: 20px;
+            z-index: 50; box-shadow: 0 20px 40px -10px rgba(0,0,0,0.6);
+            opacity: 0; pointer-events: none; 
+            transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+            overflow: hidden;
+        }
+
+        .preview-area.has-file .player-controls { 
+            opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); 
+        }
+
+        .player-controls::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(139, 92, 246, 0.12), transparent 40%);
+            z-index: -1; pointer-events: none; opacity: 1; transition: opacity 0.5s;
+        }
+        
+        .control-group { display: flex; align-items: center; gap: 6px; }
+
+        .play-btn {
+            background: #fff; border: none; color: #000; 
+            cursor: pointer; padding: 12px; border-radius: 50%; 
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 0 20px rgba(255,255,255,0.15);
+        }
+        .play-btn:hover { transform: scale(1.1); box-shadow: 0 0 30px rgba(255,255,255,0.3); }
+        .play-btn:active { transform: scale(0.95); }
+        .play-btn svg { width: 16px; height: 16px; fill: currentColor; }
+        
+        .text-action-btn {
+            background: transparent; border: none; color: #a1a1aa;
+            font-size: 12px; padding: 6px 10px; cursor: pointer;
+            position: relative; font-weight: 500; transition: color 0.2s;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .text-action-btn:hover { color: #fff; }
+        .text-action-btn.active { color: var(--accent); }
+        
+        .text-action-btn::after {
+            content: ''; position: absolute; bottom: 2px; left: 50%; width: 0; height: 2px;
+            background-color: currentColor; transition: width 0.2s ease, left 0.2s ease;
+            border-radius: 1px;
+        }
+        .text-action-btn:hover::after, .text-action-btn.active::after { width: 80%; left: 10%; }
+
+        .scrubber-container { flex: 1; display: flex; align-items: center; position: relative; height: 32px; margin: 0 10px; cursor: pointer; }
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; cursor: pointer; height: 100%; margin: 0; position: relative; z-index: 2; }
+        input[type=range]:focus { outline: none; }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 4px; border-radius: 2px;
+            background-color: rgba(255,255,255,0.15); 
+            background-image: linear-gradient(var(--accent), var(--accent));
+            background-size: var(--progress, 0%) 100%;
+            background-repeat: no-repeat;
+            transition: height 0.15s ease, background-color 0.2s;
+        }
+        .scrubber-container:hover input[type=range]::-webkit-slider-runnable-track { height: 6px; background-color: rgba(255,255,255,0.25); }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 14px; width: 14px; border-radius: 50%;
+            background: #fff; margin-top: -5px; 
+            box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.3);
+            transform: scale(0); transition: transform 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .scrubber-container:hover input[type=range]::-webkit-slider-thumb { transform: scale(1); margin-top: -4px; }
+        input[type=range]:active::-webkit-slider-thumb { transform: scale(1.4); background: var(--accent); }
+
+        .time-display { font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 11px; color: #d4d4d8; min-width: 90px; text-align: right; user-select: none; }
+        
+        .clear-btn {
+            background: transparent; border: none; color: #a1a1aa;
+            border-radius: 6px; padding: 6px 10px; cursor: pointer;
+            display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500;
+            margin-left: 10px; height: 32px; white-space: nowrap; position: relative;
+            transition: color 0.2s;
+        }
+        .clear-btn:hover { color: #ef4444; }
+        .clear-btn svg { width: 14px; height: 14px; fill: currentColor; }
+        .clear-btn::after {
+            content: ''; position: absolute; bottom: 6px; left: 10%; width: 80%; height: 1px;
+            background-color: currentColor; transform: scaleX(0); transition: transform 0.2s; opacity: 0.5;
+        }
+        .clear-btn:hover::after { transform: scaleX(1); }
+
+        /* --- Right Panel --- */
+        .resizer { width: 4px; background: #000; cursor: col-resize; border-left: 1px solid #27272a; flex-shrink: 0; transition: background 0.2s; z-index: 5; }
+        .resizer:hover, .resizer.resizing { background: var(--accent); }
+
+        .layer-panel { width: 440px; min-width: 300px; background-color: var(--bg-panel); display: flex; flex-direction: column; flex: none; border-left: 1px solid var(--border); }
+        .panel-header { 
+            height: 40px; padding: 0 16px; background-color: #27272a; 
+            border-bottom: 1px solid var(--border); 
+            display: flex; align-items: center; justify-content: space-between; 
+            font-size: 11px; color: var(--text-sub); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+        }
+        #sort-btn { display: none; background: #3f3f46; color: #fff; border:none; padding: 4px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; }
+        .btn-green { background: #059669 !important; } .btn-red { background: #dc2626 !important; }
+        #layer-list { flex: 1; overflow-y: auto; padding: 0; margin: 0; list-style: none; scrollbar-width: none; }
+        #layer-list::-webkit-scrollbar { display: none; }
+
+        .layer-item { 
+            display: grid; grid-template-columns: 16px 24px 1fr 70px; 
+            gap: 12px; align-items: center; padding: 12px 16px; 
+            border-bottom: 1px solid #27272a; font-size: 12px; cursor: pointer; 
+            transition: background 0.1s; 
+        }
+        .layer-item:hover { background-color: #27272a; }
+        .layer-item.selected { background-color: #312e81; border-left: 2px solid var(--accent); padding-left: 14px; }
+        
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; background: #52525b; justify-self: center; transition: all 0.3s; }
+        .layer-item.status-error .status-dot { background: var(--error); box-shadow: 0 0 6px var(--error); }
+        .layer-item.status-warn .status-dot { background: var(--warning); box-shadow: 0 0 6px var(--warning); }
+        .layer-item.status-ok .status-dot { background: var(--success); box-shadow: 0 0 6px var(--success); }
+
+        .layer-icon-box { width: 28px; height: 28px; border-radius: 6px; background: #27272a; display: flex; align-items: center; justify-content: center; }
+        .layer-icon-box svg { width: 14px; height: 14px; fill: #a1a1aa; }
+        .type-image svg { fill: #f97316; } .type-shape svg { fill: #3b82f6; } .type-text svg { fill: #ef4444; } .type-camera svg { fill: #fff; }
+        
+        .layer-name { color: #e4e4e7; font-weight: 500; font-size: 12px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .layer-meta { color: #71717a; font-size: 10px; display: flex; gap: 8px; font-family: monospace; }
+        .layer-actions { display: flex; gap: 4px; justify-content: flex-end; z-index: 10; pointer-events: none; }
+        .layer-item:hover .layer-actions { pointer-events: auto; }
+        .action-btn { opacity: 0.3; transition: all 0.2s; width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; pointer-events: auto; }
+        .layer-item:hover .action-btn { opacity: 1; }
+        .action-btn:hover { background: #3f3f46; fill: #fff; transform: translateY(-1px); }
+        .action-btn svg { width: 14px; height: 14px; fill: #a1a1aa; }
+        .action-btn:hover svg { fill: #fff; }
+        .edit-btn { fill: var(--web-color); } .edit-btn svg { fill: none; } 
+
+        .issue-text { font-size: 10px; color: var(--error); display: none; margin-top: 4px; background: rgba(239, 68, 68, 0.1); padding: 2px 6px; border-radius: 4px; width: fit-content; }
+        .layer-item.status-error .issue-text, .layer-item.status-warn .issue-text { display: block; }
+        .layer-item.status-warn .issue-text { color: var(--warning); background: rgba(245, 158, 11, 0.1); }
+
+        /* History */
+        #history-sidebar { position: absolute; top: 20px; left: 20px; bottom: auto; width: 240px; max-height: 240px; background: rgba(24, 24, 27, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; display: none; flex-direction: column; z-index: 45; box-shadow: 0 10px 30px -5px rgba(0,0,0,0.5); }
+        .preview-area.has-file #history-sidebar { display: flex; }
+        .history-header { padding: 10px 16px; font-size: 11px; font-weight: 600; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center; cursor: move; user-select: none; }
+        .history-list { flex: 1; overflow-y: auto; padding: 4px; scrollbar-width: thin; }
+        .history-list::-webkit-scrollbar { width: 3px; }
+        .history-list::-webkit-scrollbar-thumb { background: #555; }
+        .history-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; margin-bottom: 2px; border-radius: 6px; font-size: 11px; color: #d4d4d8; transition: background 0.1s; }
+        .history-item:hover { background: rgba(255,255,255,0.05); }
+        .history-content { display: flex; flex-direction: column; gap: 2px; flex: 1; overflow: hidden; margin-right: 8px; }
+        .history-row-top { display: flex; align-items: center; gap: 6px; }
+        .history-time { font-size: 9px; color: #71717a; font-family: monospace; }
+        .history-layer-name { font-weight: 600; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px; font-size: 10px; }
+        .history-change { font-size: 10px; color: #a1a1aa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .history-type-dot { width: 5px; height: 5px; border-radius: 50%; background: #52525b; } .history-type-dot.text { background: #ef4444; } .history-type-dot.img { background: #f97316; }
+        .undo-btn { background: transparent; border: 1px solid #3f3f46; cursor: pointer; color: #a1a1aa; border-radius: 4px; padding: 4px; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+        .undo-btn:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+        .undo-btn svg { width: 12px; height: 12px; fill: currentColor; }
+
+        /* Highlight */
+        #highlight-box { position: absolute; border: 2px solid var(--highlight-border); background: rgba(139, 92, 246, 0.1); pointer-events: auto; display: none; z-index: 40; cursor: pointer; border-radius: 4px; }
+        .hl-header { position: absolute; top: -26px; left: 0; display: flex; gap: 4px; }
+        .hl-label { background: var(--highlight-border); color: #fff; font-size: 10px; font-family: 'JetBrains Mono', monospace; font-weight: 600; padding: 3px 8px; border-radius: 4px; white-space: nowrap; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+
+        /* VIEW 2: PREVIEW MODE */
+        #preview-view { display: none; width: 100%; height: 100%; background-color: #121212; position: relative; flex-direction: row; }
+        .edit-toolbar { width: 60px; background: #18181b; border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; padding-top: 15px; gap: 15px; z-index: 20; flex-shrink: 0; }
+        .tool-group-title { font-size: 9px; color: #71717a; margin-bottom: -10px; text-transform: uppercase; text-align: center; width: 100%; font-weight: 600; letter-spacing: 0.05em; }
+        .tool-btn { width: 40px; height: 40px; border-radius: 10px; background: #27272a; color: #a1a1aa; cursor: pointer; display: flex; flex-direction: column; justify-content: center; align-items: center; font-size: 9px; gap: 2px; border: 1px solid transparent; transition: all 0.2s; }
+        .tool-btn:hover { background: #3f3f46; color: #fff; transform: translateY(-1px); }
+        .tool-btn.disabled { opacity: 0.3; cursor: not-allowed; }
+        .tool-btn svg { width: 16px; height: 16px; fill: currentColor; }
+        #edit-workspace { flex: 1; overflow: hidden; position: relative; cursor: grab; background-image: radial-gradient(#27272a 1px, transparent 1px); background-size: 24px 24px; }
+        #edit-workspace:active { cursor: grabbing; }
+        #edit-canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform-origin: 0 0; }
+        
+        .mobile-canvas { position: absolute; background-color: transparent; z-index: 5; display: flex; flex-direction: column; cursor: move; }
+        .canvas-inner { width: 100%; height: 100%; background-color: #000; overflow: hidden; border: 1px solid #3f3f46; transition: border-color 0.2s, box-shadow 0.2s; position: relative; display: flex; flex-direction: column; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); border-radius: 2px; }
+        .mobile-canvas.selected .canvas-inner { border-color: var(--highlight-border); box-shadow: 0 0 0 2px var(--highlight-border); }
+        .canvas-header { position: absolute; top: -24px; left: 0; font-size: 11px; color: #71717a; font-family: 'JetBrains Mono', monospace; font-weight: 500; pointer-events: none; white-space: nowrap; }
+        .canvas-drop-zone { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #52525b; font-size: 12px; border: 2px dashed #27272a; box-sizing: border-box; z-index: 5; background: rgba(0,0,0,0.5); pointer-events: none; }
+        .mobile-canvas.has-lottie .canvas-drop-zone { display: none; }
+        .canvas-lottie-wrapper { width: 100%; height: 100%; position: absolute; top: 0; left: 0; pointer-events: none; }
+        .canvas-controls { position: absolute; bottom: 10px; right: 10px; display: flex; gap: 6px; opacity: 0; transition: opacity 0.2s; z-index: 20; }
+        .mobile-canvas:hover .canvas-controls { opacity: 1; }
+        .mini-btn { width: 28px; height: 28px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #fff; backdrop-filter: blur(8px); transition: all 0.2s; }
+        .mini-btn:hover { background: var(--accent); border-color: var(--accent); transform: scale(1.05); }
+        .mini-btn svg { width: 14px; height: 14px; fill: currentColor; }
+
+        #drop-zone { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(4px); z-index: 2000; display: none; justify-content: center; align-items: center; }
+        #drop-zone.active { display: flex; }
+        #drop-zone h2 { color: #fff; border: 2px dashed #52525b; padding: 40px; border-radius: 16px; font-weight: 500; letter-spacing: 0.05em; }
+        #history-drag-handle { cursor: move; }
+        
+        /* Modals */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 3000; display: none; justify-content: center; align-items: center; backdrop-filter: blur(8px); }
+        .modal-overlay.open { display: flex; }
+        .modal-box { background: #18181b; border: 1px solid #3f3f46; width: 400px; padding: 24px; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 20px; }
+        .modal-title { color: #fff; font-size: 16px; font-weight: 600; letter-spacing: -0.02em; }
+        .modal-input { background: #09090b; border: 1px solid #27272a; color: #fff; padding: 12px; border-radius: 8px; font-size: 14px; width: 100%; outline: none; transition: border 0.2s; }
+        .modal-input:focus { border-color: var(--accent); }
+        .modal-footer { display: flex; justify-content: flex-end; gap: 12px; }
+        .btn-cancel { background: #27272a; color: #a1a1aa; border: 1px solid transparent; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s; }
+        .btn-cancel:hover { background: #3f3f46; color: #fff; }
+        .btn-save { background: var(--accent); color: white; border: 1px solid transparent; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s; }
+        .btn-save:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        #img-drop-area { border: 2px dashed #3f3f46; border-radius: 12px; padding: 30px; text-align: center; color: #71717a; font-size: 13px; transition: all 0.2s; min-height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; background: #09090b; }
+        #img-drop-area.drag-over { border-color: var(--accent); background: rgba(139, 92, 246, 0.1); color: var(--accent); }
+        #img-preview { max-width: 100%; max-height: 180px; display: none; border-radius: 8px; }
+        .modal-warning { color: #ef4444; font-size: 11px; background: rgba(239, 68, 68, 0.1); padding: 12px; border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.2); display: none; }
+    </style>
+</head>
+<body>
+
+<div id="drop-zone"><h2>松开鼠标导入 JSON</h2></div>
+
+<!-- Modals -->
+<div id="edit-modal" class="modal-overlay">
+    <div class="modal-box">
+        <div class="modal-title">编辑文字内容</div>
+        <div id="text-glyph-warning" class="modal-warning">⚠️ 文字已转曲 (Glyphs)，无法编辑。请在 AE 中取消 Glyphs 选项。</div>
+        <input type="text" id="edit-input" class="modal-input" placeholder="输入新文案...">
+        <div class="modal-footer"><button class="btn-cancel" onclick="closeModal()">取消</button><button class="btn-save" onclick="saveText()">保存修改</button></div>
+    </div>
+</div>
+<div id="image-modal" class="modal-overlay">
+    <div class="modal-box">
+        <div class="modal-title" id="img-modal-title">请拖入图片</div>
+        <div id="img-drop-area"><div id="img-placeholder">支持 PNG/JPG (拖入替换)</div><img id="img-preview" src=""></div>
+        <div id="img-info" style="display:none; text-align:center; font-size:11px; color:#aaa; margin-top:5px;"></div>
+        <div class="modal-footer"><button class="btn-cancel" onclick="closeImageModal()">取消</button><button id="btn-img-save" class="btn-save btn-hide" onclick="saveImage()">导入并替换</button></div>
+    </div>
+</div>
+<div id="size-modal" class="modal-overlay">
+    <div class="modal-box" style="width:320px">
+        <div class="modal-title">自定义尺寸</div>
+        <div style="display:flex; gap:12px;">
+           <input id="custom-w" class="modal-input" type="number" placeholder="宽度 (px)">
+           <input id="custom-h" class="modal-input" type="number" placeholder="高度 (px)">
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeCustomSizeModal()">取消</button>
+            <button class="btn-save" onclick="createCustomCanvas()">创建画布</button>
+        </div>
+    </div>
+</div>
+
+<header>
+    <div class="brand">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="128" fill="#8b5cf6"/><path d="M160 120v272l232-136z" fill="white"/></svg>
+        Lottie Inspector
+    </div>
+    
+    <div class="header-center">
+        <button id="tab-standard" class="mode-tab active" onclick="switchMode('standard')">编辑模式</button>
+        <button id="tab-canvas" class="mode-tab" onclick="switchMode('canvas')">预览模式</button>
+    </div>
+
+    <div class="header-right">
+        <div id="edit-specific-controls" class="edit-specific-controls">
+            <div class="check-toolbar">
+                <button class="check-btn" id="btn-ios" onclick="runCheck('ios')">iOS</button>
+                <button class="check-btn" id="btn-android" onclick="runCheck('android')">Android</button>
+                <button class="check-btn" id="btn-web" onclick="runCheck('web')">Web</button>
+            </div>
+            <button class="save-btn" id="save-btn" onclick="downloadCurrentJson()">导出 JSON</button>
+        </div>
+    </div>
+    <input type="file" id="fileInput" accept=".json">
+</header>
+
+<div class="main-container">
+    
+    <!-- === VIEW 1: EDIT MODE (Standard) === -->
+    <div id="standard-view">
+        <div class="preview-area" id="previewPane">
+            <div id="history-sidebar">
+                <div class="history-header" id="history-drag-handle">修改历史 <span id="history-count" class="history-badge">0</span></div>
+                <ul id="history-list" class="history-list"></ul>
+            </div>
+            
+            <div id="highlight-box" ondblclick="handleDirectEdit()">
+                <div class="hl-header"><span id="highlight-label" class="hl-label">Info</span></div>
+            </div>
+            
+            <div id="lottie-player" onclick="if(!currentData) document.getElementById('fileInput').click()">
+                <span style="color:#71717a; font-size:13px;">拖拽或点击导入文件</span>
+            </div>
+            
+            <!-- Upgraded Player Controls -->
+            <div class="player-controls" id="playerControls">
+                <div class="control-group">
+                    <button class="text-action-btn" onclick="setSpeed(0.5)">0.5x</button>
+                    <button class="text-action-btn active" onclick="setSpeed(1.0)" id="speed-1">1.0x</button>
+                    <button class="text-action-btn" onclick="setSpeed(2.0)">2.0x</button>
+                </div>
+                <button class="play-btn" id="playToggle" onclick="togglePlay()"><svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg></button>
+                <div class="scrubber-container">
+                    <input type="range" id="animScrubber" value="0" min="0" step="1">
+                </div>
+                <span class="time-display" id="timeDisplay">00:00 / 00:00</span>
+                <button class="text-action-btn" onclick="clearProject(event)">
+                    清空
+                </button>
+            </div>
+        </div>
+        
+        <div class="resizer" id="resizer"></div>
+        
+        <div class="layer-panel" id="layerPane">
+            <div class="panel-header">
+                <span id="file-stats">Waiting...</span>
+                <button id="sort-btn" onclick="toggleSort()">Sort by Size</button>
+            </div>
+            <ul id="layer-list"></ul>
+        </div>
+    </div>
+
+    <!-- === VIEW 2: PREVIEW MODE (Canvas) === -->
+    <div id="preview-view" style="display:none">
+        <div class="edit-toolbar">
+            <div class="tool-group-title">画布</div>
+            <div class="tool-btn" id="btn-create-small" onclick="createCanvas(375, 667, currentData)" title="小屏 (375x667)">
+                <svg viewBox="0 0 24 24"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-1.99zM17 19H7V5h10v14z"/></svg>
+                <span>375x667</span>
+            </div>
+            <div class="tool-btn" id="btn-create-med" onclick="createCanvas(375, 812, currentData)" title="常规 (375x812)">
+                <svg viewBox="0 0 24 24"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-1.99zM17 19H7V5h10v14z"/></svg>
+                <span>375x812</span>
+            </div>
+            <div class="tool-btn" id="btn-create-large" onclick="createCanvas(390, 844, currentData)" title="大屏 (390x844)">
+                <svg viewBox="0 0 24 24"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-1.99zM17 19H7V5h10v14z"/></svg>
+                <span>390x844</span>
+            </div>
+            
+             <div class="tool-btn" onclick="openCustomSizeModal()" title="自定义尺寸">
+                <svg viewBox="0 0 24 24"><path d="M19 12h-2.25l-2 3h-5.5l-2-3H5c-1.1 0-2 .9-2 2v6c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-6c0-1.1-.9-2-2-2zm0-9H5c-1.1 0-2 .9-2 2v6c0 1.1.9 2 2 2h2.25l2-3h5.5l2 3H19c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 18H5v-6h14v6zM5 5v6h14V5H5z"/></svg>
+                <span>自定义</span>
+            </div>
+            
+            <div style="height:10px"></div>
+            <div class="tool-group-title">对齐</div>
+            <div class="tool-btn" onclick="setCanvasAlign('top')" title="顶部对齐"><svg viewBox="0 0 24 24"><path d="M4 3h16v2H4V3zm4 8h8v8H8v-8zm2-6h4v4h-4V5z"/></svg></div>
+            <div class="tool-btn" onclick="setCanvasAlign('center')" title="居中对齐"><svg viewBox="0 0 24 24"><path d="M8 6h8v12H8V6zm-6 5h2v2H2v-2zm20 0h2v2h-2v-2z"/></svg></div>
+            <div class="tool-btn" onclick="setCanvasAlign('bottom')" title="底部对齐"><svg viewBox="0 0 24 24"><path d="M4 19h16v2H4v-2zm4-14h8v8H8V5zm2 10h4v4h-4v-4z"/></svg></div>
+        </div>
+
+        <div id="edit-workspace" onmousedown="handleWorkspaceClick(event)">
+            <div id="edit-canvas-container">
+                <!-- Canvases added here -->
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    // --- Global State ---
+    let currentData = null;
+    let animInstance = null;
+    let flatLayers = []; 
+    let assetsMap = {};
+    let totalFileSize = 0;
+    let isSortedBySize = false;
+    let currentPlatform = null;
+    let editLayerIndex = -1; let editImageLayerIndex = -1; let newImageData = null;
+    let editHistory = [];
+    
+    // View Mode State
+    let currentMode = 'standard'; 
+    
+    // Canvas Mode State
+    let canvases = []; 
+    let selectedCanvasId = null;
+    let draggedCanvasId = null;
+    let dragOffset = { x:0, y:0 };
+    let zoomLevel = 1;
+    let panState = { isPanning: false, startX: 0, startY: 0, offX: 0, offY: 0 };
+
+    // Icons
+    const ICONS = {
+        image: '<svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>',
+        shape: '<svg viewBox="0 0 24 24"><path d="M12 2l-5.5 9h11z"/><path d="M17.5 13l-5.5 9-5.5-9z" opacity="0.5"/></svg>',
+        text: '<svg viewBox="0 0 24 24"><path d="M5 4v3h5v12h3V7h5V4H5z"/></svg>',
+        camera: '<svg viewBox="0 0 24 24"><path d="M9.4 2l-1.4 2.8H4c-1.1 0-2 .9-2 2v12.4c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6.8c0-1.1-.9-2-2-2h-4L14.6 2H9.4zm2.6 15.2c-3.3 0-6-2.7-6-6s2.7-6 6-6 6 2.7 6 6-2.7 6-6 6z"/></svg>',
+        other: '<svg viewBox="0 0 24 24"><path d="M3 3h18v18H3z"/></svg>',
+        undo: '<svg viewBox="0 0 24 24"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg>',
+        edit: `<svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg"><g clip-path="url(#clip0_20713_255)"><path d="M30.0188 160.017H72.4012C73.7167 160.024 75.0208 159.772 76.2387 159.275C77.4566 158.777 78.5643 158.044 79.4983 157.118L148.67 87.8465L177.058 60.0581C177.995 59.1288 178.738 58.0233 179.246 56.8052C179.753 55.5871 180.015 54.2806 180.015 52.961C180.015 51.6415 179.753 50.3349 179.246 49.1169C178.738 47.8988 177.995 46.7932 177.058 45.864L134.675 2.98177C133.746 2.04487 132.641 1.30124 131.422 0.793759C130.204 0.286283 128.898 0.0250092 127.578 0.0250092C126.259 0.0250092 124.952 0.286283 123.734 0.793759C122.516 1.30124 121.41 2.04487 120.481 2.98177L92.293 31.27L22.9217 100.541C21.9953 101.475 21.2624 102.583 20.7649 103.801C20.2675 105.019 20.0153 106.323 20.023 107.638V150.021C20.023 152.672 21.0761 155.214 22.9507 157.089C24.8253 158.963 27.3677 160.017 30.0188 160.017ZM127.578 24.173L155.867 52.4612L141.672 66.6553L113.384 38.3171L127.578 24.173ZM40.0147 111.737L99.2901 52.4612L127.578 80.7495L68.3029 140.025H40.0147V111.737ZM189.952 180.008H10.0271C7.37604 180.008 4.83355 181.061 2.95897 182.936C1.08438 184.811 0.03125 187.353 0.03125 190.004C0.03125 192.655 1.08438 195.198 2.95897 197.072C4.83355 198.947 7.37604 200 10.0271 200H189.952C192.603 200 195.146 198.947 197.021 197.072C198.895 195.198 199.948 192.655 199.948 190.004C199.948 187.353 198.895 184.811 197.021 182.936C195.146 181.061 192.603 180.008 189.952 180.008Z" fill="url(#paint0_linear_20713_255)"/></g><defs><linearGradient id="paint0_linear_20713_255" x1="62" y1="57.5" x2="159.5" y2="168.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FFDD00"/><stop offset="1" stop-color="#FFC400"/></linearGradient><clipPath id="clip0_20713_255"><rect width="200" height="200" fill="white"/></clipPath></defs></svg>`,
+        dlJson: '<svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>',
+        dlImg: '<svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>',
+        copy: '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>',
+        play: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
+        pause: '<svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>'
+    };
+
+    // --- Sidebar Drag Logic ---
+    const sidebar = document.getElementById('history-sidebar');
+    const dragHandle = document.getElementById('history-drag-handle');
+    let isSideDragging = false, sideOffsetX = 0, sideOffsetY = 0;
+    dragHandle.addEventListener('mousedown', (e) => { isSideDragging = true; sideOffsetX = e.clientX - sidebar.offsetLeft; sideOffsetY = e.clientY - sidebar.offsetTop; dragHandle.style.cursor = 'grabbing'; });
+    document.addEventListener('mousemove', (e) => { if (isSideDragging) { sidebar.style.left = (e.clientX - sideOffsetX) + 'px'; sidebar.style.top = (e.clientY - sideOffsetY) + 'px'; } });
+    document.addEventListener('mouseup', () => { isSideDragging = false; dragHandle.style.cursor = 'move'; });
+
+    // --- Resizer ---
+    const resizer = document.getElementById('resizer');
+    const layerPane = document.getElementById('layerPane');
+    resizer.addEventListener('mousedown', (e) => { e.preventDefault(); resizer.classList.add('resizing'); document.addEventListener('mousemove', resize); document.addEventListener('mouseup', stopResize); });
+    function resize(e) { if(currentMode === 'standard') { const newWidth = window.innerWidth - e.clientX; if(newWidth > 250 && newWidth < window.innerWidth - 300) layerPane.style.width = newWidth + 'px'; if(animInstance) animInstance.resize(); } }
+    function stopResize() { resizer.classList.remove('resizing'); document.removeEventListener('mousemove', resize); document.removeEventListener('mouseup', stopResize); }
+
+    // --- Standard View / Global File Handling ---
+    const fileInput = document.getElementById('fileInput');
+    const dropZone = document.getElementById('drop-zone');
+    
+    document.addEventListener('dragover', e => { e.preventDefault(); if(currentMode === 'standard') dropZone.classList.add('active'); });
+    document.addEventListener('dragleave', e => { if(!e.relatedTarget) dropZone.classList.remove('active'); });
+    document.addEventListener('drop', e => { 
+        e.preventDefault(); dropZone.classList.remove('active');
+        if(currentMode === 'standard') handleFiles(e.dataTransfer.files);
+    });
+    fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+    function handleFiles(files) {
+        if(files[0] && files[0].name.endsWith('.json')) {
+            const r = new FileReader();
+            r.onload = e => parseJSON(e.target.result);
+            r.readAsText(files[0]);
+        }
+    }
+
+    function clearProject(e) {
+        if(e) e.stopPropagation();
+        if(animInstance) animInstance.destroy();
+        currentData = null; flatLayers = []; editHistory = []; updateHistoryUI(); currentPlatform = null;
+        document.getElementById('lottie-player').innerHTML = '<span style="color:#71717a;font-size:13px">拖拽或点击导入文件</span>';
+        document.getElementById('layer-list').innerHTML = '';
+        document.getElementById('file-stats').innerText = 'Waiting...';
+        document.getElementById('save-btn').style.display = 'none';
+        document.getElementById('sort-btn').style.display = 'none';
+        document.querySelector('.preview-area').classList.remove('has-file');
+        document.getElementById('highlight-box').style.display = 'none';
+        document.querySelectorAll('.check-btn').forEach(b => b.classList.remove('active-ios', 'active-android', 'active-web'));
+        if(currentMode === 'canvas') toggleEditMode(); // exit
+        canvases = [];
+    }
+
+    // --- JSON Parsing ---
+    function parseJSON(str) {
+        try {
+            totalFileSize = str.length; currentData = JSON.parse(str); assetsMap = {};
+            if(currentData.assets) currentData.assets.forEach(a => assetsMap[a.id] = a);
+            editHistory = []; updateHistoryUI(); currentPlatform = null;
+            const btn = document.getElementById('sort-btn'); const sizeMB = totalFileSize / (1024*1024); btn.style.display = 'block';
+            if(sizeMB > 1.0) { btn.className='btn-red'; btn.innerText=`🔥 >1MB (${sizeMB.toFixed(1)}MB)`; } else { btn.className='btn-green'; btn.innerText=`✅ ${(totalFileSize/1024).toFixed(0)}KB`; }
+            document.getElementById('file-stats').innerText = `${currentData.layers.length} Layers`;
+            document.querySelector('.preview-area').classList.add('has-file');
+            document.getElementById('save-btn').style.display = 'flex';
+            playAnimation(currentData);
+            analyzeLayers(currentData);
+        } catch(e) { console.error(e); alert("JSON 格式错误"); }
+    }
+
+    // --- Standard Player (Auto Play) ---
+    let highlightLoopId = null; let currentHighlightIdx = -1; let isScrubbing = false; let isPlaying = true; let playSpeed = 1.0;
+
+    function playAnimation(data) {
+        const c = document.getElementById('lottie-player'); c.innerHTML = '';
+        if(animInstance) animInstance.destroy();
+        const freshData = JSON.parse(JSON.stringify(data));
+        animInstance = lottie.loadAnimation({
+            container: c, renderer: 'svg', loop: true, autoplay: true, 
+            animationData: freshData
+        });
+        isPlaying = true; updatePlayIcon();
+        animInstance.addEventListener('DOMLoaded', () => { document.getElementById('animScrubber').max = animInstance.totalFrames; });
+        animInstance.addEventListener('enterFrame', (e) => {
+             if(!isScrubbing) {
+                 const scrubber = document.getElementById('animScrubber');
+                 scrubber.value = e.currentTime; 
+                 // Updated Progress Visual
+                 const progress = (e.currentTime / animInstance.totalFrames) * 100;
+                 scrubber.style.setProperty('--progress', `${progress}%`);
+                 updateTimeDisplay(e.currentTime); 
+             } 
+             // Mouse Glow update
+             const controls = document.querySelector('.player-controls');
+             if (controls) {
+                 // Handled by event listener below
+             }
+        });
+        
+        // Add Mouse Move for Glow
+        document.querySelector('.player-controls').addEventListener('mousemove', (e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            e.currentTarget.style.setProperty('--mouse-x', `${x}px`);
+            e.currentTarget.style.setProperty('--mouse-y', `${y}px`);
+        });
+    }
+    const scrub = document.getElementById('animScrubber');
+    scrub.onmousedown = () => { isScrubbing = true; if(isPlaying) animInstance.pause(); };
+    scrub.onmouseup = () => { isScrubbing = false; if(isPlaying) animInstance.play(); };
+    scrub.oninput = (e) => { 
+        const val = parseFloat(e.target.value); 
+        animInstance.goToAndStop(val, true); 
+        const progress = (val / animInstance.totalFrames) * 100;
+        e.target.style.setProperty('--progress', `${progress}%`);
+        updateTimeDisplay(val); 
+    };
+
+    function togglePlay() { if(!animInstance) return; if(isPlaying) animInstance.pause(); else animInstance.play(); isPlaying = !isPlaying; updatePlayIcon(); }
+    function updatePlayIcon() { document.getElementById('playToggle').innerHTML = isPlaying ? ICONS.pause : ICONS.play; }
+    function setSpeed(s) { if(!animInstance) return; playSpeed = s; animInstance.setSpeed(s); document.querySelectorAll('.text-action-btn').forEach(b => b.classList.remove('active')); if(s===0.5) document.querySelectorAll('.text-action-btn')[0].classList.add('active'); if(s===1) document.querySelectorAll('.text-action-btn')[1].classList.add('active'); if(s===2) document.querySelectorAll('.text-action-btn')[2].classList.add('active'); }
+    function updateTimeDisplay(f) { 
+        if(!animInstance) return; 
+        const fps = animInstance.frameRate||30; 
+        const cur = Math.floor(f/fps); 
+        const total = Math.floor(animInstance.totalFrames/fps);
+        const fmt = (n) => (n < 10 ? '0' + n : n);
+        document.getElementById('timeDisplay').innerText = `00:${fmt(cur)} / 00:${fmt(total)}`; 
+    }
+
+    // --- MODE SWITCH LOGIC ---
+    function switchMode(mode) {
+        currentMode = mode;
+        const std = document.getElementById('standard-view');
+        const prev = document.getElementById('preview-view'); 
+        const controls = document.getElementById('edit-specific-controls'); 
+        const dropText = document.querySelector('#drop-zone h2');
+        
+        // Update Tabs
+        document.getElementById('tab-standard').classList.remove('active');
+        document.getElementById('tab-canvas').classList.remove('active');
+        document.getElementById(`tab-${mode}`).classList.add('active');
+
+        if (mode === 'canvas') { // PREVIEW MODE (Infinite Canvas)
+            if(animInstance) animInstance.pause();
+            std.style.display = 'none';
+            prev.style.display = 'flex';
+            controls.style.display = 'none'; // Hide edit controls
+            dropText.innerText = "松开鼠标导入 (预览模式)";
+            // Sync Logic
+            if (canvases.length === 0 && currentData) {
+                // Auto create from current data
+                createCanvas(375, 812, currentData);
+            } else if (canvases.length === 0) {
+                 createCanvas(375, 812);
+            }
+            // Force re-sync if data changed
+            if (canvases.length > 0 && currentData) {
+                syncEditToPreview();
+            }
+            document.getElementById('edit-workspace').addEventListener('wheel', handleZoom, { passive: false });
+        } else { // EDIT MODE (Standard View)
+            prev.style.display = 'none';
+            std.style.display = 'flex';
+            controls.style.display = 'flex'; // Show edit controls
+            dropText.innerText = "松开鼠标导入 (编辑模式)";
+            if(animInstance && currentData) { animInstance.play(); isPlaying = true; updatePlayIcon(); }
+            document.getElementById('edit-workspace').removeEventListener('wheel', handleZoom);
+        }
+    }
+
+    // --- PREVIEW MODE FUNCTIONS (Canvas) ---
+    function handleZoom(e) {
+        if (e.ctrlKey || e.metaKey || e.deltaY) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
+            zoomLevel *= delta;
+            zoomLevel = Math.min(Math.max(0.1, zoomLevel), 5);
+            updateCanvasTransform();
+        }
+    }
+
+    function updateCanvasTransform() {
+        const container = document.getElementById('edit-canvas-container');
+        container.style.transform = `translate(${panState.offX}px, ${panState.offY}px) scale(${zoomLevel})`;
+    }
+
+    function handleWorkspaceClick(e) {
+        if (e.target.id === 'edit-workspace' || e.target.id === 'edit-canvas-container') {
+            selectedCanvasId = null;
+            renderEditCanvases();
+        }
+        if (!e.target.closest('.mobile-canvas') && !e.target.closest('.tool-btn')) {
+            startPan(e);
+        }
+    }
+
+    function startPan(e) {
+        panState.isPanning = true;
+        panState.startX = e.clientX;
+        panState.startY = e.clientY;
+        document.getElementById('edit-workspace').style.cursor = 'grabbing';
+        document.addEventListener('mousemove', doPan);
+        document.addEventListener('mouseup', stopPan);
+    }
+
+    function doPan(e) {
+        if (!panState.isPanning) return;
+        const dx = e.clientX - panState.startX;
+        const dy = e.clientY - panState.startY;
+        panState.offX += dx;
+        panState.offY += dy;
+        panState.startX = e.clientX;
+        panState.startY = e.clientY;
+        updateCanvasTransform();
+    }
+
+    function stopPan() {
+        panState.isPanning = false;
+        document.getElementById('edit-workspace').style.cursor = 'grab';
+        document.removeEventListener('mousemove', doPan);
+        document.removeEventListener('mouseup', stopPan);
+    }
+
+    function createCanvas(w, h, data = null) {
+        if (canvases.length >= 10) return;
+        const id = Date.now();
+        const offset = canvases.length * 400 + 50; 
+        
+        // FIX: Use passed data OR fallback to global currentData
+        const dataToUse = data || currentData;
+        
+        const canvasObj = { 
+            id: id, w: w, h: h, x: offset, y: 50, 
+            align: 'center', anim: null, 
+            animationData: dataToUse ? JSON.parse(JSON.stringify(dataToUse)) : null 
+        };
+        canvases.push(canvasObj);
+        renderEditCanvases();
+        updateToolbarState();
+        if(dataToUse) setTimeout(() => renderLottieInstance(canvasObj), 0);
+    }
+    
+    // Custom Size Modal
+    function openCustomSizeModal() { document.getElementById('size-modal').classList.add('open'); }
+    function closeCustomSizeModal() { document.getElementById('size-modal').classList.remove('open'); }
+    function createCustomCanvas() {
+        const w = parseInt(document.getElementById('custom-w').value);
+        const h = parseInt(document.getElementById('custom-h').value);
+        if(!w || !h) { alert("请输入有效的宽高"); return; }
+        closeCustomSizeModal();
+        createCanvas(w, h, currentData); // Pass global currentData
+    }
+
+    function updateToolbarState() {
+        const isFull = canvases.length >= 10;
+        ['small','med','large'].forEach(size => {
+            const btn = document.getElementById(`btn-create-${size}`);
+            if(isFull) btn.classList.add('disabled'); else btn.classList.remove('disabled');
+        });
+    }
+
+    function renderEditCanvases() {
+        const container = document.getElementById('edit-canvas-container');
+        canvases.forEach(c => {
+            let el = document.getElementById(`canvas-${c.id}`);
+            if (!el) {
+                el = document.createElement('div');
+                el.id = `canvas-${c.id}`;
+                el.className = 'mobile-canvas align-center';
+                el.innerHTML = `
+                    <div class="canvas-header">${c.w} x ${c.h}</div>
+                    <div class="canvas-inner">
+                        <div class="canvas-drop-zone"><div style="font-size:20px; margin-bottom:5px;">+</div>拖入 Lottie</div>
+                        <div class="canvas-lottie-wrapper" id="lottie-wrap-${c.id}"></div>
+                        <div class="canvas-controls">
+                            <div class="mini-btn" onclick="restartCanvasAnim(${c.id})"><svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg></div>
+                            <div class="mini-btn" id="play-btn-${c.id}" onclick="toggleCanvasAnim(${c.id})"><svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg></div>
+                        </div>
+                    </div>
+                `;
+                el.addEventListener('mousedown', (e) => {
+                    if (e.target.closest('.mini-btn')) return;
+                    e.stopPropagation();
+                    selectCanvas(c.id);
+                    draggedCanvasId = c.id;
+                    const matrix = new WebKitCSSMatrix(window.getComputedStyle(el).transform);
+                    dragOffset.startX = e.clientX;
+                    dragOffset.startY = e.clientY;
+                    dragOffset.initLeft = c.x;
+                    dragOffset.initTop = c.y;
+                    document.addEventListener('mousemove', onCanvasDrag);
+                    document.addEventListener('mouseup', endCanvasDrag);
+                });
+                
+                el.addEventListener('dragover', e => { e.preventDefault(); el.style.borderColor = '#6c5ce7'; });
+                el.addEventListener('dragleave', e => { 
+                    e.preventDefault(); 
+                    el.style.borderColor = selectedCanvasId === c.id ? '#6c5ce7' : '#333'; 
+                });
+                el.addEventListener('drop', e => {
+                    e.preventDefault(); e.stopPropagation();
+                    el.style.borderColor = selectedCanvasId === c.id ? '#6c5ce7' : '#333';
+                    if (e.dataTransfer.files[0]) loadLottieToCanvas(c.id, e.dataTransfer.files[0]);
+                });
+                container.appendChild(el);
+            }
+            
+            el.style.width = c.w + 'px'; el.style.height = c.h + 'px';
+            el.style.left = c.x + 'px'; el.style.top = c.y + 'px';
+            if (c.align === 'top') { el.classList.remove('align-center','align-bottom'); el.classList.add('align-top'); }
+            else if (c.align === 'bottom') { el.classList.remove('align-center','align-top'); el.classList.add('align-bottom'); }
+            else { el.classList.remove('align-top','align-bottom'); el.classList.add('align-center'); }
+
+            if (selectedCanvasId === c.id) el.classList.add('selected'); else el.classList.remove('selected');
+        });
+        
+        Array.from(container.children).forEach(child => {
+            const id = parseInt(child.id.replace('canvas-', ''));
+            if (!canvases.find(c => c.id === id)) child.remove();
+        });
+    }
+
+    function onCanvasDrag(e) {
+        if (!draggedCanvasId) return;
+        const c = canvases.find(x => x.id === draggedCanvasId);
+        if (c) {
+            const dx = (e.clientX - dragOffset.startX) / zoomLevel;
+            const dy = (e.clientY - dragOffset.startY) / zoomLevel;
+            c.x = dragOffset.initLeft + dx;
+            c.y = dragOffset.initTop + dy;
+            const el = document.getElementById(`canvas-${c.id}`);
+            el.style.left = c.x + 'px';
+            el.style.top = c.y + 'px';
+        }
+    }
+    function endCanvasDrag() { draggedCanvasId = null; document.removeEventListener('mousemove', onCanvasDrag); document.removeEventListener('mouseup', endCanvasDrag); }
+    function selectCanvas(id) { selectedCanvasId = id; renderEditCanvases(); }
+
+    function loadLottieToCanvas(id, file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const json = JSON.parse(e.target.result);
+                const c = canvases.find(x => x.id === id);
+                if(c) {
+                    c.animationData = json; 
+                    renderLottieInstance(c); 
+                }
+            } catch(err) { alert("Lottie 解析失败"); }
+        };
+        reader.readAsText(file);
+    }
+    
+    // --- Updated Alignment Logic ---
+    function setCanvasAlign(type) {
+        if (!selectedCanvasId) return;
+        const c = canvases.find(x => x.id === selectedCanvasId);
+        if (c) {
+            c.align = type;
+            if (c.animationData) {
+                renderLottieInstance(c); 
+            }
+            renderEditCanvases(); 
+        }
+    }
+
+    // --- Central Rendering Function ---
+    function renderLottieInstance(c) {
+        const container = document.getElementById(`lottie-wrap-${c.id}`);
+        const wrapper = document.getElementById(`canvas-${c.id}`);
+        
+        if (c.anim) c.anim.destroy();
+        container.innerHTML = '';
+        wrapper.classList.add('has-lottie');
+
+        // Map alignment to aspect ratio setting
+        let aspect = 'xMidYMid slice'; // Default Center
+        if (c.w > 390) aspect = 'xMidYMid meet'; // Wide screen fix
+        else {
+            if (c.align === 'top') aspect = 'xMidYMin slice';
+            if (c.align === 'bottom') aspect = 'xMidYMax slice';
+        }
+
+        c.anim = lottie.loadAnimation({
+            container: container,
+            renderer: 'svg',
+            loop: true,
+            autoplay: true,
+            animationData: JSON.parse(JSON.stringify(c.animationData)),
+            rendererSettings: { preserveAspectRatio: aspect }
+        });
+    }
+
+    function restartCanvasAnim(id) { const c = canvases.find(x => x.id === id); if(c && c.anim) c.anim.goToAndPlay(0); }
+    function toggleCanvasAnim(id) {
+        const c = canvases.find(x => x.id === id);
+        if(c && c.anim) {
+            if(c.anim.isPaused) { c.anim.play(); document.getElementById(`play-btn-${id}`).innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>'; }
+            else { c.anim.pause(); document.getElementById(`play-btn-${id}`).innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>'; }
+        }
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (currentMode === 'canvas' && selectedCanvasId && (e.key === 'Backspace' || e.key === 'Delete')) {
+            const c = canvases.find(x => x.id === selectedCanvasId);
+            if(c && c.anim) c.anim.destroy();
+            canvases = canvases.filter(x => x.id !== selectedCanvasId);
+            selectedCanvasId = null;
+            renderEditCanvases();
+            updateToolbarState();
+        }
+    });
+
+    // --- Sync Function: Update all Canvases in Preview Mode ---
+    function syncEditToPreview() {
+        if (!currentData || canvases.length === 0) return;
+        canvases.forEach(c => {
+            // Update data of each canvas to current edited data
+            c.animationData = JSON.parse(JSON.stringify(currentData)); 
+            // Re-render
+            renderLottieInstance(c);
+        });
+    }
+
+    // --- Function Definitions (Hoisted) ---
+    function updateTextDeep(obj,newText){if(typeof obj!=='object'||obj===null)return;if(obj.s&&obj.s.t!==undefined)obj.s.t=newText;if(obj.e&&obj.e.t!==undefined)obj.e.t=newText;if(obj.t!==undefined&&typeof obj.t==='string')obj.t=newText;if(Array.isArray(obj))obj.forEach(i=>updateTextDeep(i,newText));else Object.keys(obj).forEach(k=>{if(k==='s'||k==='e'||k==='k')updateTextDeep(obj[k],newText);});}
+    function findTextProperty(d){if(!d.t||!d.t.d)return null;if(Array.isArray(d.t.d.k)&&d.t.d.k.length>0&&d.t.d.k[0].s)return d.t.d.k[0].s.t;if(d.t.d.k.s)return d.t.d.k.s.t;return null;}
+    
+    function openEditModal(i){
+        editLayerIndex=i;
+        const d=flatLayers[i].rawData;
+        const t=findTextProperty(d);
+        document.getElementById('text-glyph-warning').style.display=(currentData.chars&&currentData.chars.length>0)?'block':'none';
+        if(t===null){alert("无法解析");return;}
+        document.getElementById('edit-input').value=t;
+        document.getElementById('edit-modal').classList.add('open');
+        document.getElementById('edit-input').focus();
+        document.getElementById('edit-input').onkeydown=(e)=>{if(e.key==='Enter')saveText();};
+    }
+    
+    function closeModal(){document.getElementById('edit-modal').classList.remove('open');editLayerIndex=-1;}
+    
+    function saveText(){
+        if(editLayerIndex===-1)return;
+        const t=document.getElementById('edit-input').value;
+        const d=flatLayers[editLayerIndex].rawData;
+        const o=findTextProperty(d);
+        if(t===o){closeModal();return;}
+        const now=new Date();
+        const ts=`${now.getHours()}:${now.getMinutes()<10?'0'+now.getMinutes():now.getMinutes()}`;
+        editHistory.unshift({type:'text',idx:editLayerIndex,prev:o,curr:t,name:flatLayers[editLayerIndex].nm,time:ts});
+        updateHistoryUI();
+        if(d.t&&d.t.d&&d.t.d.k)updateTextDeep(d.t.d.k,t);
+        d.nm=t;
+        playAnimation(currentData);
+        analyzeLayers(currentData);
+        
+        // SYNC CHANGE
+        syncEditToPreview();
+        
+        closeModal();
+    }
+    
+    function openImageModal(i){
+        editImageLayerIndex=i;
+        newImageData=null;
+        document.getElementById('img-modal-title').innerText="请拖入图片";
+        document.getElementById('img-placeholder').style.display='block';
+        document.getElementById('img-preview').style.display='none';
+        document.getElementById('img-info').style.display='none';
+        document.getElementById('btn-img-save').classList.add('btn-hide');
+        document.getElementById('image-modal').classList.add('open');
+    }
+    
+    function closeImageModal(){document.getElementById('image-modal').classList.remove('open');editImageLayerIndex=-1;newImageData=null;}
+    
+    const imgDrop=document.getElementById('img-drop-area');
+    imgDrop.addEventListener('dragover',e=>{e.preventDefault();imgDrop.classList.add('drag-over');});
+    imgDrop.addEventListener('dragleave',e=>{e.preventDefault();imgDrop.classList.remove('drag-over');});
+    imgDrop.addEventListener('drop',e=>{e.preventDefault();imgDrop.classList.remove('drag-over');const f=e.dataTransfer.files[0];if(f&&(f.type==='image/png'||f.type==='image/jpeg'))procImg(f);else alert('请拖入PNG/JPG');});
+    
+    function procImg(f){
+        const r=new FileReader();
+        r.onload=e=>{
+            const b=e.target.result;
+            const i=new Image();
+            i.src=b;
+            i.onload=()=>{
+                // Create CANVAS to center image
+                const canvas = document.createElement('canvas');
+                // Use original asset dimensions (we need to find them first)
+                if(editImageLayerIndex !== -1) {
+                    const ref = flatLayers[editImageLayerIndex].refId;
+                    const asset = assetsMap[ref];
+                    canvas.width = asset.w;
+                    canvas.height = asset.h;
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Center Logic
+                    const x = (asset.w - i.width) / 2;
+                    const y = (asset.h - i.height) / 2;
+                    ctx.drawImage(i, x, y);
+                    
+                    // Update preview source to new canvas data for consistency
+                    const centeredBase64 = canvas.toDataURL('image/png');
+
+                    document.getElementById('img-modal-title').innerText="很棒的修改";
+                    document.getElementById('img-placeholder').style.display='none';
+                    const p=document.getElementById('img-preview');
+                    p.src=centeredBase64; // Show centered result
+                    p.style.display='block';
+                    
+                    const s=(f.size/1024).toFixed(1);
+                    document.getElementById('img-info').innerText=`原图: ${asset.w}x${asset.h} | 新图: ${i.width}x${i.height}`;
+                    document.getElementById('img-info').style.display='block';
+                    document.getElementById('btn-img-save').classList.remove('btn-hide');
+                    
+                    // Store the CENTERED image data
+                    newImageData={p:centeredBase64, w:asset.w, h:asset.h}; 
+                }
+            };
+        };
+        r.readAsDataURL(f);
+    }
+    
+    function saveImage(){
+        if(editImageLayerIndex===-1||!newImageData)return;
+        const ref=flatLayers[editImageLayerIndex].refId;
+        const a=assetsMap[ref];
+        if(!a){alert("No Asset");closeImageModal();return;}
+        const now=new Date();
+        const ts=`${now.getHours()}:${now.getMinutes()<10?'0'+now.getMinutes():now.getMinutes()}`;
+        editHistory.unshift({type:'image',idx:editImageLayerIndex,assetId:ref,prev:{p:a.p,w:a.w,h:a.h},curr:"Image",name:flatLayers[editImageLayerIndex].nm,time:ts});
+        updateHistoryUI();
+        
+        // Update with centered image data
+        a.p=newImageData.p;
+        // Keep original dimensions (newImageData.w/h are actually original asset dims now)
+        a.w=newImageData.w; 
+        a.h=newImageData.h;
+        a.u="";
+        
+        playAnimation(currentData);
+        analyzeLayers(currentData);
+        
+        // SYNC CHANGE
+        syncEditToPreview();
+        
+        closeImageModal();
+    }
+    
+    function updateHistoryUI(){
+        const l=document.getElementById('history-list');
+        document.getElementById('history-count').innerText=editHistory.length;
+        l.innerHTML='';
+        editHistory.forEach((r,i)=>{
+            const li=document.createElement('li');
+            li.className='history-item';
+            const cls=r.type==='image'?'img':'text';
+            const d=r.type==='image'?'图片已替换':`修改为: ${r.curr}`;
+            li.innerHTML=`<div class="history-content"><div class="history-row-top"><div class="history-type-dot ${cls}"></div><span class="history-time">${r.time}</span><span class="history-layer-name" title="${r.name}">${r.name}</span></div><div class="history-change" title="${d}">${d}</div></div><button class="undo-btn" onclick="undoEdit(${i})">${ICONS.undo}</button>`;
+            l.appendChild(li);
+        });
+    }
+    
+    function undoEdit(i){
+        const r=editHistory[i];
+        if(r.type==='text'){
+            const d=flatLayers[r.idx].rawData;
+            if(d.t&&d.t.d&&d.t.d.k)updateTextDeep(d.t.d.k,r.prev);
+            d.nm=r.prev;
+        }
+        else if(r.type==='image'){
+            const a=assetsMap[r.assetId];
+            if(a){a.p=r.prev.p;a.w=r.prev.w;a.h=r.prev.h;}
+        }
+        editHistory.splice(i,1);
+        updateHistoryUI();
+        playAnimation(currentData);
+        analyzeLayers(currentData);
+        
+        // SYNC CHANGE (Undo also needs sync)
+        syncEditToPreview();
+    }
+    
+    function handleDirectEdit(){if(currentHighlightIdx===-1)return;const ty=flatLayers[currentHighlightIdx].ty;if(ty===5)openEditModal(currentHighlightIdx);if(ty===2)openImageModal(currentHighlightIdx);}
+    
+    function downloadCurrentJson(){
+        if(!currentData)return;
+        const s=JSON.stringify(currentData);
+        const b=new Blob([s],{type:"application/json"});
+        const u=URL.createObjectURL(b);
+        const a=document.createElement('a');
+        a.href=u;
+        const n=document.getElementById('fileInput').files[0]?document.getElementById('fileInput').files[0].name.replace('.json',''):'lottie';
+        a.download=`${n}_edited.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(u);
+    }
+    
+    function copyKeyPath(i){
+        navigator.clipboard.writeText(flatLayers[i].nm);
+        const t=document.getElementById('toast');
+        t.style.opacity=1;
+        setTimeout(()=>t.style.opacity=0,2000);
+    }
+    
+    function downloadImage(i){
+        const a=assetsMap[flatLayers[i].refId];
+        if(a&&a.p.startsWith('data:')){
+            const l=document.createElement('a');
+            l.href=a.p;
+            l.download='img.png';
+            l.click();
+        } else {
+            alert('不可下载');
+        }
+    }
+    
+    function downloadLayer(i){
+        saveFile(JSON.stringify(flatLayers[i].rawData),flatLayers[i].nm+'.json','application/json');
+    }
+
+    function formatBytes(b){if(b===0)return'0 B';const k=1024;const i=Math.floor(Math.log(b)/Math.log(k));return parseFloat((b/Math.pow(k,i)).toFixed(1))+['B','KB','MB'][i];}
+    
+    // --- Analysis Logic ---
+    function analyzeLayers(data) { flatLayers=[];const ls=data.layers||[];ls.forEach((l,i)=>{const s=JSON.stringify(l);let cr=null;if(currentPlatform){const iss=checkLayerDeep(l,currentPlatform);if(iss.length>0)cr=iss[0];}flatLayers.push({idx:i,ind:l.ind,nm:l.nm,ty:l.ty,refId:l.refId,rawData:l,size:s.length,pct:((s.length/totalFileSize)*100).toFixed(1),checkResult:cr});}); if(isSortedBySize)flatLayers.sort((a,b)=>b.size-a.size);else flatLayers.sort((a,b)=>a.idx-b.idx); renderList(); document.querySelectorAll('.check-btn').forEach(b=>b.classList.remove('active-ios','active-android','active-web')); if(currentPlatform==='ios')document.getElementById('btn-ios').classList.add('active-ios');if(currentPlatform==='android')document.getElementById('btn-android').classList.add('active-android');if(currentPlatform==='web')document.getElementById('btn-web').classList.add('active-web'); }
+    function toggleSort(){isSortedBySize=!isSortedBySize;analyzeLayers(currentData);}
+    
+    // --- RENDER LIST (FIXED: DOM ELEMENTS + EVENT LISTENERS) ---
+    function renderList() {
+        const list = document.getElementById('layer-list'); 
+        list.innerHTML = '';
+        
+        flatLayers.forEach((item, renderIndex) => {
+            const li = document.createElement('li'); 
+            li.className = 'layer-item';
+            
+            // Highlight Logic
+            li.onmouseenter = () => { li.classList.add('selected'); startHighlight(item.idx, item.nm); };
+            li.onmouseleave = () => { li.classList.remove('selected'); stopHighlight(); };
+
+            // Status Logic
+            let statusClass = '';
+            let issueText = '';
+            if (currentPlatform && item.checkResult) {
+                if (item.checkResult.level === 'error') statusClass = 'status-error';
+                else if (item.checkResult.level === 'warn') statusClass = 'status-warn';
+                else statusClass = 'status-ok';
+                issueText = item.checkResult.msg;
+            } else if (currentPlatform && !item.checkResult) {
+                statusClass = 'status-ok';
+            }
+            if(statusClass) li.classList.add(statusClass);
+
+            // Icon Logic
+            let icon = ICONS.other; let typeCls = '';
+            if (item.ty === 2) { icon = ICONS.image; typeCls = 'type-image'; }
+            else if (item.ty === 4) { icon = ICONS.shape; typeCls = 'type-shape'; }
+            else if (item.ty === 5) { icon = ICONS.text; typeCls = 'type-text'; }
+            else if (item.ty === 13) { icon = ICONS.camera; typeCls = 'type-camera'; }
+
+            li.innerHTML = `
+                <div class="status-dot"></div>
+                <div class="layer-icon-box ${typeCls}">${icon}</div>
+                <div class="layer-content">
+                    <div class="layer-name" title="${item.nm}">${item.nm}</div>
+                    <div class="layer-meta"><span>#${item.ind}</span><span style="font-family:Consolas">${formatBytes(item.size)}</span></div>
+                    <div class="issue-text">${issueText}</div>
+                </div>
+            `;
+
+            // Actions - Created via DOM to ensure events attach correctly
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'layer-actions';
+
+            const createBtn = (svg, title, clickHandler) => {
+                const btn = document.createElement('div');
+                btn.className = 'action-btn';
+                if(svg === ICONS.edit) btn.classList.add('edit-btn');
+                btn.innerHTML = svg;
+                btn.title = title;
+                // Crucial: Stop Propagation here
+                btn.onclick = (e) => { 
+                    e.stopPropagation(); 
+                    clickHandler(renderIndex); 
+                };
+                return btn;
+            };
+
+            if (item.ty === 2) { // Image
+                actionsDiv.appendChild(createBtn(ICONS.edit, '替换图片', openImageModal));
+                actionsDiv.appendChild(createBtn(ICONS.dlImg, '下载图片', downloadImage));
+            }
+            else if (item.ty === 5) { // Text
+                actionsDiv.appendChild(createBtn(ICONS.edit, '修改文字', openEditModal));
+                actionsDiv.appendChild(createBtn(ICONS.copy, '复制名称', copyKeyPath));
+            }
+            else { // Others
+                actionsDiv.appendChild(createBtn(ICONS.dlJson, '下载图层', downloadLayer));
+            }
+
+            li.appendChild(actionsDiv);
+            list.appendChild(li);
+        });
+    }
+
+    function hasDeepProperty(s,k,v){if(!s)return false;for(let x of s){if(x[k]===v)return true;if(x.it)if(hasDeepProperty(x.it,k,v))return true;}return false;}
+    function hasExpression(l){const ks=l.ks;if(!ks)return false;const ps=['p','r','s','o','a','sk','sa'];return ps.some(p=>ks[p]&&ks[p].x&&typeof ks[p].x==='string');}
+    function runCheck(p){if(!currentData)return;if(currentPlatform===p)currentPlatform=null;else currentPlatform=p;analyzeLayers(currentData);}
+    function checkLayerDeep(l,p){let r=[];if(p==='ios'){if(l.ddd===1)r.push({level:'error',msg:'3D Layer 不支持'});if(l.ty===13)r.push({level:'error',msg:'Camera 不支持'});if(l.tm)r.push({level:'error',msg:'Time Remap 不支持'});if(l.ty===4&&hasDeepProperty(l.shapes,'ty','mm'))r.push({level:'error',msg:'Merge Paths 不支持'});if(hasExpression(l))r.push({level:'error',msg:'Expr 不支持'});if(l.ef&&l.ef.length>0)r.push({level:'error',msg:'Effects 不支持'});if(l.sy&&l.sy.length>0)r.push({level:'error',msg:'Layer Styles 不支持'});}if(p==='android'){if(l.ddd===1)r.push({level:'warn',msg:'3D 耗性能'});if(l.ty===4&&hasDeepProperty(l.shapes,'ty','mm'))r.push({level:'warn',msg:'Merge Paths 需手动开启'});if(l.hasMask)r.push({level:'warn',msg:'复杂 Mask 易出错'});if(l.tt)r.push({level:'warn',msg:'Track Matte (建议测试)'});}if(p==='web'){if(l.ef&&l.ef.length>0)r.push({level:'warn',msg:'Effects 耗性能'});if(l.ty===4&&hasDeepProperty(l.shapes,'ty','mm'))r.push({level:'warn',msg:'Merge Paths SVG差异'});}return r;}
+    function startHighlight(i,n){currentHighlightIdx=i;document.getElementById('highlight-box').style.display='block';const el = animInstance.renderer.elements[i]?.baseElement || animInstance.renderer.elements[i]?.layerElement;if(el){const r=el.getBoundingClientRect();document.getElementById('highlight-label').innerText = `W:${Math.round(r.width)} H:${Math.round(r.height)} | ${formatBytes(flatLayers[i].size)}`;}const loop=()=>{if(currentHighlightIdx===-1)return;updateBox(i);highlightLoopId=requestAnimationFrame(loop);};loop();}
+    function stopHighlight(){currentHighlightIdx=-1;if(highlightLoopId)cancelAnimationFrame(highlightLoopId);document.getElementById('highlight-box').style.display='none';}
+    function updateBox(i){if(!animInstance||!animInstance.renderer)return;const el=animInstance.renderer.elements[i]?.baseElement||animInstance.renderer.elements[i]?.layerElement;if(el){const r=el.getBoundingClientRect();const cRect=document.getElementById('lottie-player').getBoundingClientRect();const box=document.getElementById('highlight-box');if(r.width>0){box.style.width=r.width+'px';box.style.height=r.height+'px';box.style.left=(r.left-cRect.left)+'px';box.style.top=(r.top-cRect.top)+'px';document.getElementById('highlight-label').innerText=`W:${Math.round(r.width)} H:${Math.round(r.height)} | ${formatBytes(flatLayers[i].size)}`;}}}
+    function saveFile(c,n,t){const b=new Blob([c],{type:t});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=n;a.click();}
+</script>
+</body>
