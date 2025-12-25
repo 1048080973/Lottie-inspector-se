@@ -9,7 +9,6 @@
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
     <style>
-        /* --- GLOBAL VARIABLES --- */
         :root {
             --bg-dark: #09090b;
             --bg-panel: #18181b;
@@ -30,20 +29,23 @@
 
         * { box-sizing: border-box; user-select: none; outline: none; }
 
-        html, body {
-            margin: 0; padding: 0; width: 100%; height: 100%;
-            background-color: var(--bg-dark); color: var(--text-main);
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-            overflow: hidden; display: flex; flex-direction: column;
+        body {
+            margin: 0; padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex; flex-direction: column;
+            overflow: hidden;
         }
 
-        /* --- HEADER --- */
+        /* --- Header --- */
         header {
             height: 52px; background-color: rgba(24, 24, 27, 0.8);
             backdrop-filter: blur(12px);
             display: grid; grid-template-columns: 200px 1fr 250px;
             align-items: center; padding: 0 20px; 
-            border-bottom: 1px solid var(--border); flex-shrink: 0; z-index: 100;
+            border-bottom: 1px solid var(--border); z-index: 100;
         }
 
         .brand { font-size: 14px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 10px; letter-spacing: -0.01em; }
@@ -55,11 +57,13 @@
             width: fit-content; margin: 0 auto; border: 1px solid #3f3f46; 
         }
         .mode-tab {
-            background: transparent; border: none; color: #a1a1aa; padding: 4px 16px; 
-            font-size: 12px; cursor: pointer; border-radius: 6px; transition: all 0.2s; font-weight: 500;
+            background: transparent; border: none; color: #a1a1aa;
+            padding: 4px 16px; font-size: 12px; cursor: pointer; border-radius: 6px;
+            transition: all 0.2s; font-weight: 500;
         }
         .mode-tab:hover { color: #fff; }
         .mode-tab.active { background: #3f3f46; color: #fff; cursor: default; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+        .mode-tab:not(.active):hover { background: rgba(255,255,255,0.05); }
 
         .header-right { display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
         .edit-specific-controls { display: flex; align-items: center; gap: 12px; }
@@ -215,6 +219,7 @@
         }
         #sort-btn { display: none; background: #3f3f46; color: #fff; border:none; padding: 4px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; }
         .btn-green { background: #059669 !important; } .btn-red { background: #dc2626 !important; }
+
         #layer-list { flex: 1; overflow-y: auto; padding: 0; margin: 0; list-style: none; scrollbar-width: none; }
         #layer-list::-webkit-scrollbar { display: none; }
 
@@ -327,7 +332,22 @@
 
 <div id="drop-zone"><h2>松开鼠标导入 JSON</h2></div>
 
-<!-- Modals -->
+<!-- Export Modal -->
+<div id="export-modal" class="modal-overlay">
+    <div class="modal-box">
+        <div class="modal-title">导出设置</div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+            <label style="font-size:12px; color:#a1a1aa;">文件名</label>
+            <input type="text" id="export-name-input" class="modal-input" placeholder="输入文件名 (无需 .json)">
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeExportModal()">取消</button>
+            <button class="btn-save" onclick="confirmExport()">导出文件</button>
+        </div>
+    </div>
+</div>
+
+<!-- Text Edit Modal -->
 <div id="edit-modal" class="modal-overlay">
     <div class="modal-box">
         <div class="modal-title">编辑文字内容</div>
@@ -376,7 +396,7 @@
                 <button class="check-btn" id="btn-android" onclick="runCheck('android')">Android</button>
                 <button class="check-btn" id="btn-web" onclick="runCheck('web')">Web</button>
             </div>
-            <button class="save-btn" id="save-btn" onclick="downloadCurrentJson()">导出 JSON</button>
+            <button class="save-btn" id="save-btn" onclick="openExportModal()">导出 JSON</button>
         </div>
     </div>
     <input type="file" id="fileInput" accept=".json">
@@ -400,7 +420,6 @@
                 <span style="color:#71717a; font-size:13px;">拖拽或点击导入文件</span>
             </div>
             
-            <!-- Upgraded Player Controls -->
             <div class="player-controls" id="playerControls">
                 <div class="control-group">
                     <button class="text-action-btn" onclick="setSpeed(0.5)">0.5x</button>
@@ -479,6 +498,9 @@
     let editLayerIndex = -1; let editImageLayerIndex = -1; let newImageData = null;
     let editHistory = [];
     
+    // NEW: Filename Tracking
+    let currentFileName = 'lottie';
+    
     // View Mode State
     let currentMode = 'standard'; 
     
@@ -535,6 +557,8 @@
 
     function handleFiles(files) {
         if(files[0] && files[0].name.endsWith('.json')) {
+            // Save filename on import
+            currentFileName = files[0].name.replace('.json', '');
             const r = new FileReader();
             r.onload = e => parseJSON(e.target.result);
             r.readAsText(files[0]);
@@ -545,6 +569,7 @@
         if(e) e.stopPropagation();
         if(animInstance) animInstance.destroy();
         currentData = null; flatLayers = []; editHistory = []; updateHistoryUI(); currentPlatform = null;
+        currentFileName = 'lottie'; // Reset name
         document.getElementById('lottie-player').innerHTML = '<span style="color:#71717a;font-size:13px">拖拽或点击导入文件</span>';
         document.getElementById('layer-list').innerHTML = '';
         document.getElementById('file-stats').innerText = 'Waiting...';
@@ -880,8 +905,7 @@
         container.innerHTML = '';
         wrapper.classList.add('has-lottie');
 
-        // Map alignment to aspect ratio setting
-        let aspect = 'xMidYMid slice'; // Default Center
+        let aspect = 'xMidYMid slice'; 
         if (c.w > 390) aspect = 'xMidYMid meet'; // Wide screen fix
         else {
             if (c.align === 'top') aspect = 'xMidYMin slice';
@@ -993,36 +1017,41 @@
             const i=new Image();
             i.src=b;
             i.onload=()=>{
-                // Create CANVAS to center image
-                const canvas = document.createElement('canvas');
-                // Use original asset dimensions (we need to find them first)
+                // --- FIXED: CENTER IMAGE LOGIC ---
+                // Create a canvas with the dimensions of the ORIGINAL asset
                 if(editImageLayerIndex !== -1) {
                     const ref = flatLayers[editImageLayerIndex].refId;
                     const asset = assetsMap[ref];
+                    
+                    // Create canvas with original asset size
+                    const canvas = document.createElement('canvas');
                     canvas.width = asset.w;
                     canvas.height = asset.h;
                     const ctx = canvas.getContext('2d');
                     
-                    // Center Logic
+                    // Calculate center position
                     const x = (asset.w - i.width) / 2;
                     const y = (asset.h - i.height) / 2;
+                    
+                    // Draw new image centered
                     ctx.drawImage(i, x, y);
                     
-                    // Update preview source to new canvas data for consistency
+                    // Export centered image as Base64
                     const centeredBase64 = canvas.toDataURL('image/png');
 
+                    // UI Update
                     document.getElementById('img-modal-title').innerText="很棒的修改";
                     document.getElementById('img-placeholder').style.display='none';
                     const p=document.getElementById('img-preview');
-                    p.src=centeredBase64; // Show centered result
+                    p.src=centeredBase64; 
                     p.style.display='block';
                     
                     const s=(f.size/1024).toFixed(1);
-                    document.getElementById('img-info').innerText=`原图: ${asset.w}x${asset.h} | 新图: ${i.width}x${i.height}`;
+                    document.getElementById('img-info').innerText=`原图: ${asset.w}x${asset.h} | 新图: ${i.width}x${i.height} (已居中)`;
                     document.getElementById('img-info').style.display='block';
                     document.getElementById('btn-img-save').classList.remove('btn-hide');
                     
-                    // Store the CENTERED image data
+                    // Store the CENTERED image data, but keep original W/H metadata
                     newImageData={p:centeredBase64, w:asset.w, h:asset.h}; 
                 }
             };
@@ -1040,10 +1069,9 @@
         editHistory.unshift({type:'image',idx:editImageLayerIndex,assetId:ref,prev:{p:a.p,w:a.w,h:a.h},curr:"Image",name:flatLayers[editImageLayerIndex].nm,time:ts});
         updateHistoryUI();
         
-        // Update with centered image data
+        // Update Data
         a.p=newImageData.p;
-        // Keep original dimensions (newImageData.w/h are actually original asset dims now)
-        a.w=newImageData.w; 
+        a.w=newImageData.w;
         a.h=newImageData.h;
         a.u="";
         
@@ -1092,20 +1120,39 @@
     
     function handleDirectEdit(){if(currentHighlightIdx===-1)return;const ty=flatLayers[currentHighlightIdx].ty;if(ty===5)openEditModal(currentHighlightIdx);if(ty===2)openImageModal(currentHighlightIdx);}
     
-    function downloadCurrentJson(){
-        if(!currentData)return;
-        const s=JSON.stringify(currentData);
-        const b=new Blob([s],{type:"application/json"});
-        const u=URL.createObjectURL(b);
-        const a=document.createElement('a');
-        a.href=u;
-        const n=document.getElementById('fileInput').files[0]?document.getElementById('fileInput').files[0].name.replace('.json',''):'lottie';
-        a.download=`${n}_edited.json`;
+    // --- New Export Modal Logic ---
+    function openExportModal() {
+        if (!currentData) { alert("请先导入 Lottie 文件"); return; }
+        document.getElementById('export-name-input').value = currentFileName;
+        document.getElementById('export-modal').classList.add('open');
+    }
+    
+    function closeExportModal() {
+        document.getElementById('export-modal').classList.remove('open');
+    }
+    
+    function confirmExport() {
+        let name = document.getElementById('export-name-input').value.trim();
+        if (!name) name = "lottie_export";
+        if (!name.toLowerCase().endsWith('.json')) name += '.json';
+        
+        // Trigger download
+        const jsonStr = JSON.stringify(currentData);
+        const blob = new Blob([jsonStr], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        URL.revokeObjectURL(u);
+        URL.revokeObjectURL(url);
+        
+        closeExportModal();
     }
+
+    // Keep this function but it is now replaced by openExportModal in HTML onclick
+    function downloadCurrentJson(){ openExportModal(); }
     
     function copyKeyPath(i){
         navigator.clipboard.writeText(flatLayers[i].nm);
