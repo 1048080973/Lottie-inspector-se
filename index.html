@@ -57,13 +57,11 @@
             width: fit-content; margin: 0 auto; border: 1px solid #3f3f46; 
         }
         .mode-tab {
-            background: transparent; border: none; color: #a1a1aa;
-            padding: 4px 16px; font-size: 12px; cursor: pointer; border-radius: 6px;
-            transition: all 0.2s; font-weight: 500;
+            background: transparent; border: none; color: #a1a1aa; padding: 4px 16px; 
+            font-size: 12px; cursor: pointer; border-radius: 6px; transition: all 0.2s; font-weight: 500;
         }
         .mode-tab:hover { color: #fff; }
         .mode-tab.active { background: #3f3f46; color: #fff; cursor: default; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
-        .mode-tab:not(.active):hover { background: rgba(255,255,255,0.05); }
 
         .header-right { display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
         .edit-specific-controls { display: flex; align-items: center; gap: 12px; }
@@ -251,6 +249,7 @@
         .action-btn svg { width: 14px; height: 14px; fill: #a1a1aa; }
         .action-btn:hover svg { fill: #fff; }
         .edit-btn { fill: var(--web-color); } .edit-btn svg { fill: none; } 
+        .export-btn { fill: var(--success); }
 
         .issue-text { font-size: 10px; color: var(--error); display: none; margin-top: 4px; background: rgba(239, 68, 68, 0.1); padding: 2px 6px; border-radius: 4px; width: fit-content; }
         .layer-item.status-error .issue-text, .layer-item.status-warn .issue-text { display: block; }
@@ -326,13 +325,17 @@
         #img-drop-area.drag-over { border-color: var(--accent); background: rgba(139, 92, 246, 0.1); color: var(--accent); }
         #img-preview { max-width: 100%; max-height: 180px; display: none; border-radius: 8px; }
         .modal-warning { color: #ef4444; font-size: 11px; background: rgba(239, 68, 68, 0.1); padding: 12px; border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.2); display: none; }
+        
+        /* Export Layer Preview */
+        #export-layer-preview { width: 100%; height: 200px; background: #000; border-radius: 8px; border: 1px solid #333; margin-bottom: 10px; overflow: hidden; }
+        .export-mode-select { width: 100%; background: #09090b; color: #fff; border: 1px solid #333; padding: 8px; border-radius: 6px; outline: none; }
     </style>
 </head>
 <body>
 
 <div id="drop-zone"><h2>松开鼠标导入 JSON</h2></div>
 
-<!-- Export Modal -->
+<!-- Export Modal (Global) -->
 <div id="export-modal" class="modal-overlay">
     <div class="modal-box">
         <div class="modal-title">导出设置</div>
@@ -343,6 +346,32 @@
         <div class="modal-footer">
             <button class="btn-cancel" onclick="closeExportModal()">取消</button>
             <button class="btn-save" onclick="confirmExport()">导出文件</button>
+        </div>
+    </div>
+</div>
+
+<!-- Layer Export Modal -->
+<div id="layer-export-modal" class="modal-overlay">
+    <div class="modal-box" style="width:500px">
+        <div class="modal-title">导出图层</div>
+        <div id="export-layer-preview"></div>
+        
+        <div style="display:flex; flex-direction:column; gap:8px;">
+            <label style="font-size:12px; color:#a1a1aa;">导出模式</label>
+            <select id="layer-export-mode" class="export-mode-select">
+                <option value="withDependencies">包含依赖 (推荐)</option>
+                <option value="singleLayerOnly">仅该图层 (可能丢失内容)</option>
+            </select>
+        </div>
+        
+        <div style="display:flex; flex-direction:column; gap:8px;">
+            <label style="font-size:12px; color:#a1a1aa;">文件名</label>
+            <input type="text" id="layer-export-name" class="modal-input">
+        </div>
+        
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeLayerExportModal()">取消</button>
+            <button class="btn-save" onclick="confirmLayerExport()">下载图层</button>
         </div>
     </div>
 </div>
@@ -487,7 +516,6 @@
 </div>
 
 <script>
-    // --- Global State ---
     let currentData = null;
     let animInstance = null;
     let flatLayers = []; 
@@ -498,13 +526,15 @@
     let editLayerIndex = -1; let editImageLayerIndex = -1; let newImageData = null;
     let editHistory = [];
     
-    // NEW: Filename Tracking
+    // NEW: Global Filename State
     let currentFileName = 'lottie';
     
-    // View Mode State
+    // Layer Export State
+    let layerToExport = null;
+    let exportPreviewAnim = null;
+    
     let currentMode = 'standard'; 
     
-    // Canvas Mode State
     let canvases = []; 
     let selectedCanvasId = null;
     let draggedCanvasId = null;
@@ -512,7 +542,6 @@
     let zoomLevel = 1;
     let panState = { isPanning: false, startX: 0, startY: 0, offX: 0, offY: 0 };
 
-    // Icons
     const ICONS = {
         image: '<svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>',
         shape: '<svg viewBox="0 0 24 24"><path d="M12 2l-5.5 9h11z"/><path d="M17.5 13l-5.5 9-5.5-9z" opacity="0.5"/></svg>',
@@ -521,14 +550,29 @@
         other: '<svg viewBox="0 0 24 24"><path d="M3 3h18v18H3z"/></svg>',
         undo: '<svg viewBox="0 0 24 24"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg>',
         edit: `<svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg"><g clip-path="url(#clip0_20713_255)"><path d="M30.0188 160.017H72.4012C73.7167 160.024 75.0208 159.772 76.2387 159.275C77.4566 158.777 78.5643 158.044 79.4983 157.118L148.67 87.8465L177.058 60.0581C177.995 59.1288 178.738 58.0233 179.246 56.8052C179.753 55.5871 180.015 54.2806 180.015 52.961C180.015 51.6415 179.753 50.3349 179.246 49.1169C178.738 47.8988 177.995 46.7932 177.058 45.864L134.675 2.98177C133.746 2.04487 132.641 1.30124 131.422 0.793759C130.204 0.286283 128.898 0.0250092 127.578 0.0250092C126.259 0.0250092 124.952 0.286283 123.734 0.793759C122.516 1.30124 121.41 2.04487 120.481 2.98177L92.293 31.27L22.9217 100.541C21.9953 101.475 21.2624 102.583 20.7649 103.801C20.2675 105.019 20.0153 106.323 20.023 107.638V150.021C20.023 152.672 21.0761 155.214 22.9507 157.089C24.8253 158.963 27.3677 160.017 30.0188 160.017ZM127.578 24.173L155.867 52.4612L141.672 66.6553L113.384 38.3171L127.578 24.173ZM40.0147 111.737L99.2901 52.4612L127.578 80.7495L68.3029 140.025H40.0147V111.737ZM189.952 180.008H10.0271C7.37604 180.008 4.83355 181.061 2.95897 182.936C1.08438 184.811 0.03125 187.353 0.03125 190.004C0.03125 192.655 1.08438 195.198 2.95897 197.072C4.83355 198.947 7.37604 200 10.0271 200H189.952C192.603 200 195.146 198.947 197.021 197.072C198.895 195.198 199.948 192.655 199.948 190.004C199.948 187.353 198.895 184.811 197.021 182.936C195.146 181.061 192.603 180.008 189.952 180.008Z" fill="url(#paint0_linear_20713_255)"/></g><defs><linearGradient id="paint0_linear_20713_255" x1="62" y1="57.5" x2="159.5" y2="168.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FFDD00"/><stop offset="1" stop-color="#FFC400"/></linearGradient><clipPath id="clip0_20713_255"><rect width="200" height="200" fill="white"/></clipPath></defs></svg>`,
-        dlJson: '<svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>',
+        dlJson: '<svg viewBox="0 0 24 24"><path d="M12 16.5l-4-4h3v-9h2v9h3l-4 4zm9-13h-6v1.99h6v14.03H3V5.49h6V3.5H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2v-14c0-1.1-.9-2-2-2z"/></svg>',
         dlImg: '<svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>',
         copy: '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>',
         play: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
         pause: '<svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>'
     };
 
-    // --- Sidebar Drag Logic ---
+    // --- Keyboard Control ---
+    document.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') {
+            e.preventDefault(); 
+            if(currentMode === 'standard') togglePlay();
+        }
+        if (currentMode === 'canvas' && selectedCanvasId && (e.key === 'Backspace' || e.key === 'Delete')) {
+            const c = canvases.find(x => x.id === selectedCanvasId);
+            if(c && c.anim) c.anim.destroy();
+            canvases = canvases.filter(x => x.id !== selectedCanvasId);
+            selectedCanvasId = null;
+            renderEditCanvases();
+            updateToolbarState();
+        }
+    });
+
     const sidebar = document.getElementById('history-sidebar');
     const dragHandle = document.getElementById('history-drag-handle');
     let isSideDragging = false, sideOffsetX = 0, sideOffsetY = 0;
@@ -536,17 +580,14 @@
     document.addEventListener('mousemove', (e) => { if (isSideDragging) { sidebar.style.left = (e.clientX - sideOffsetX) + 'px'; sidebar.style.top = (e.clientY - sideOffsetY) + 'px'; } });
     document.addEventListener('mouseup', () => { isSideDragging = false; dragHandle.style.cursor = 'move'; });
 
-    // --- Resizer ---
     const resizer = document.getElementById('resizer');
     const layerPane = document.getElementById('layerPane');
     resizer.addEventListener('mousedown', (e) => { e.preventDefault(); resizer.classList.add('resizing'); document.addEventListener('mousemove', resize); document.addEventListener('mouseup', stopResize); });
     function resize(e) { if(currentMode === 'standard') { const newWidth = window.innerWidth - e.clientX; if(newWidth > 250 && newWidth < window.innerWidth - 300) layerPane.style.width = newWidth + 'px'; if(animInstance) animInstance.resize(); } }
     function stopResize() { resizer.classList.remove('resizing'); document.removeEventListener('mousemove', resize); document.removeEventListener('mouseup', stopResize); }
 
-    // --- Standard View / Global File Handling ---
     const fileInput = document.getElementById('fileInput');
     const dropZone = document.getElementById('drop-zone');
-    
     document.addEventListener('dragover', e => { e.preventDefault(); if(currentMode === 'standard') dropZone.classList.add('active'); });
     document.addEventListener('dragleave', e => { if(!e.relatedTarget) dropZone.classList.remove('active'); });
     document.addEventListener('drop', e => { 
@@ -557,8 +598,7 @@
 
     function handleFiles(files) {
         if(files[0] && files[0].name.endsWith('.json')) {
-            // Save filename on import
-            currentFileName = files[0].name.replace('.json', '');
+            currentFileName = files[0].name.replace('.json', ''); // Store filename
             const r = new FileReader();
             r.onload = e => parseJSON(e.target.result);
             r.readAsText(files[0]);
@@ -569,7 +609,7 @@
         if(e) e.stopPropagation();
         if(animInstance) animInstance.destroy();
         currentData = null; flatLayers = []; editHistory = []; updateHistoryUI(); currentPlatform = null;
-        currentFileName = 'lottie'; // Reset name
+        currentFileName = 'lottie';
         document.getElementById('lottie-player').innerHTML = '<span style="color:#71717a;font-size:13px">拖拽或点击导入文件</span>';
         document.getElementById('layer-list').innerHTML = '';
         document.getElementById('file-stats').innerText = 'Waiting...';
@@ -578,11 +618,10 @@
         document.querySelector('.preview-area').classList.remove('has-file');
         document.getElementById('highlight-box').style.display = 'none';
         document.querySelectorAll('.check-btn').forEach(b => b.classList.remove('active-ios', 'active-android', 'active-web'));
-        if(currentMode === 'canvas') toggleEditMode(); // exit
+        if(currentMode === 'canvas') toggleEditMode();
         canvases = [];
     }
 
-    // --- JSON Parsing ---
     function parseJSON(str) {
         try {
             totalFileSize = str.length; currentData = JSON.parse(str); assetsMap = {};
@@ -590,15 +629,17 @@
             editHistory = []; updateHistoryUI(); currentPlatform = null;
             const btn = document.getElementById('sort-btn'); const sizeMB = totalFileSize / (1024*1024); btn.style.display = 'block';
             if(sizeMB > 1.0) { btn.className='btn-red'; btn.innerText=`🔥 >1MB (${sizeMB.toFixed(1)}MB)`; } else { btn.className='btn-green'; btn.innerText=`✅ ${(totalFileSize/1024).toFixed(0)}KB`; }
-            document.getElementById('file-stats').innerText = `${currentData.layers.length} Layers`;
+            
+            const layerCount = currentData.layers ? currentData.layers.length : 0;
+            document.getElementById('file-stats').innerText = `${layerCount} Layers`;
+            
             document.querySelector('.preview-area').classList.add('has-file');
             document.getElementById('save-btn').style.display = 'flex';
             playAnimation(currentData);
             analyzeLayers(currentData);
-        } catch(e) { console.error(e); alert("JSON 格式错误"); }
+        } catch(e) { console.error(e); alert("JSON 格式错误: " + e.message); }
     }
 
-    // --- Standard Player (Auto Play) ---
     let highlightLoopId = null; let currentHighlightIdx = -1; let isScrubbing = false; let isPlaying = true; let playSpeed = 1.0;
 
     function playAnimation(data) {
@@ -615,19 +656,14 @@
              if(!isScrubbing) {
                  const scrubber = document.getElementById('animScrubber');
                  scrubber.value = e.currentTime; 
-                 // Updated Progress Visual
                  const progress = (e.currentTime / animInstance.totalFrames) * 100;
                  scrubber.style.setProperty('--progress', `${progress}%`);
                  updateTimeDisplay(e.currentTime); 
              } 
-             // Mouse Glow update
              const controls = document.querySelector('.player-controls');
              if (controls) {
-                 // Handled by event listener below
              }
         });
-        
-        // Add Mouse Move for Glow
         document.querySelector('.player-controls').addEventListener('mousemove', (e) => {
             const rect = e.currentTarget.getBoundingClientRect();
             const x = e.clientX - rect.left;
@@ -659,7 +695,6 @@
         document.getElementById('timeDisplay').innerText = `00:${fmt(cur)} / 00:${fmt(total)}`; 
     }
 
-    // --- MODE SWITCH LOGIC ---
     function switchMode(mode) {
         currentMode = mode;
         const std = document.getElementById('standard-view');
@@ -667,40 +702,35 @@
         const controls = document.getElementById('edit-specific-controls'); 
         const dropText = document.querySelector('#drop-zone h2');
         
-        // Update Tabs
         document.getElementById('tab-standard').classList.remove('active');
         document.getElementById('tab-canvas').classList.remove('active');
         document.getElementById(`tab-${mode}`).classList.add('active');
 
-        if (mode === 'canvas') { // PREVIEW MODE (Infinite Canvas)
+        if (mode === 'canvas') { 
             if(animInstance) animInstance.pause();
             std.style.display = 'none';
             prev.style.display = 'flex';
-            controls.style.display = 'none'; // Hide edit controls
+            controls.style.display = 'none'; 
             dropText.innerText = "松开鼠标导入 (预览模式)";
-            // Sync Logic
             if (canvases.length === 0 && currentData) {
-                // Auto create from current data
                 createCanvas(375, 812, currentData);
             } else if (canvases.length === 0) {
                  createCanvas(375, 812);
             }
-            // Force re-sync if data changed
             if (canvases.length > 0 && currentData) {
                 syncEditToPreview();
             }
             document.getElementById('edit-workspace').addEventListener('wheel', handleZoom, { passive: false });
-        } else { // EDIT MODE (Standard View)
+        } else { 
             prev.style.display = 'none';
             std.style.display = 'flex';
-            controls.style.display = 'flex'; // Show edit controls
+            controls.style.display = 'flex'; 
             dropText.innerText = "松开鼠标导入 (编辑模式)";
             if(animInstance && currentData) { animInstance.play(); isPlaying = true; updatePlayIcon(); }
             document.getElementById('edit-workspace').removeEventListener('wheel', handleZoom);
         }
     }
 
-    // --- PREVIEW MODE FUNCTIONS (Canvas) ---
     function handleZoom(e) {
         if (e.ctrlKey || e.metaKey || e.deltaY) {
             e.preventDefault();
@@ -757,22 +787,14 @@
         if (canvases.length >= 10) return;
         const id = Date.now();
         const offset = canvases.length * 400 + 50; 
-        
-        // FIX: Use passed data OR fallback to global currentData
         const dataToUse = data || currentData;
-        
-        const canvasObj = { 
-            id: id, w: w, h: h, x: offset, y: 50, 
-            align: 'center', anim: null, 
-            animationData: dataToUse ? JSON.parse(JSON.stringify(dataToUse)) : null 
-        };
+        const canvasObj = { id: id, w: w, h: h, x: offset, y: 50, align: 'center', anim: null, animationData: dataToUse ? JSON.parse(JSON.stringify(dataToUse)) : null };
         canvases.push(canvasObj);
         renderEditCanvases();
         updateToolbarState();
         if(dataToUse) setTimeout(() => renderLottieInstance(canvasObj), 0);
     }
     
-    // Custom Size Modal
     function openCustomSizeModal() { document.getElementById('size-modal').classList.add('open'); }
     function closeCustomSizeModal() { document.getElementById('size-modal').classList.remove('open'); }
     function createCustomCanvas() {
@@ -780,7 +802,7 @@
         const h = parseInt(document.getElementById('custom-h').value);
         if(!w || !h) { alert("请输入有效的宽高"); return; }
         closeCustomSizeModal();
-        createCanvas(w, h, currentData); // Pass global currentData
+        createCanvas(w, h, currentData);
     }
 
     function updateToolbarState() {
@@ -883,7 +905,6 @@
         reader.readAsText(file);
     }
     
-    // --- Updated Alignment Logic ---
     function setCanvasAlign(type) {
         if (!selectedCanvasId) return;
         const c = canvases.find(x => x.id === selectedCanvasId);
@@ -896,20 +917,22 @@
         }
     }
 
-    // --- Central Rendering Function ---
     function renderLottieInstance(c) {
         const container = document.getElementById(`lottie-wrap-${c.id}`);
         const wrapper = document.getElementById(`canvas-${c.id}`);
-        
         if (c.anim) c.anim.destroy();
         container.innerHTML = '';
         wrapper.classList.add('has-lottie');
 
         let aspect = 'xMidYMid slice'; 
-        if (c.w > 390) aspect = 'xMidYMid meet'; // Wide screen fix
-        else {
-            if (c.align === 'top') aspect = 'xMidYMin slice';
-            if (c.align === 'bottom') aspect = 'xMidYMax slice';
+        if (c.w <= 390) {
+             aspect = 'xMidYMid slice'; 
+             if (c.align === 'top') aspect = 'xMidYMin slice';
+             if (c.align === 'bottom') aspect = 'xMidYMax slice';
+        } else {
+             aspect = 'xMidYMid meet'; 
+             if (c.align === 'top') aspect = 'xMidYMin meet';
+             if (c.align === 'bottom') aspect = 'xMidYMax meet';
         }
 
         c.anim = lottie.loadAnimation({
@@ -931,29 +954,146 @@
         }
     }
 
-    document.addEventListener('keydown', (e) => {
-        if (currentMode === 'canvas' && selectedCanvasId && (e.key === 'Backspace' || e.key === 'Delete')) {
-            const c = canvases.find(x => x.id === selectedCanvasId);
-            if(c && c.anim) c.anim.destroy();
-            canvases = canvases.filter(x => x.id !== selectedCanvasId);
-            selectedCanvasId = null;
-            renderEditCanvases();
-            updateToolbarState();
-        }
-    });
-
-    // --- Sync Function: Update all Canvases in Preview Mode ---
     function syncEditToPreview() {
         if (!currentData || canvases.length === 0) return;
         canvases.forEach(c => {
-            // Update data of each canvas to current edited data
             c.animationData = JSON.parse(JSON.stringify(currentData)); 
-            // Re-render
             renderLottieInstance(c);
         });
     }
 
-    // --- Function Definitions (Hoisted) ---
+    // --- Helper Logic (Core Feature: Layer Export) ---
+
+    // 1. Dependency Collector
+    function collectDependencyClosure(original, selectedPtr) {
+        const layerKeySet = new Set();
+        const layerPointers = [];
+        const usedCompAssetIds = new Set();
+        const usedImageAssetIds = new Set();
+        let hasTextLayer = false;
+
+        const stack = [selectedPtr];
+
+        while (stack.length) {
+            const ptr = stack.pop();
+            const key = `${ptr.container}:${ptr.assetId || "root"}:${ptr.layer.ind}`;
+            if (layerKeySet.has(key)) continue;
+
+            layerKeySet.add(key);
+            layerPointers.push(ptr);
+
+            const layer = ptr.layer;
+
+            // Parent chain
+            if (layer.parent != null) {
+                const parentPtr = findLayerByInd(original, ptr.container, ptr.assetId, layer.parent);
+                if (parentPtr) stack.push(parentPtr);
+            }
+
+            // Precomp Ref
+            if (layer.refId) {
+                const compAsset = (original.assets || []).find(a => a.id === layer.refId && a.layers);
+                if (compAsset) {
+                    usedCompAssetIds.add(layer.refId);
+                    compAsset.layers.forEach(l => stack.push({ container: "asset", assetId: compAsset.id, layer: l }));
+                } else {
+                    // Maybe Image
+                    const imgAsset = (original.assets || []).find(a => a.id === layer.refId && !a.layers);
+                    if(imgAsset) usedImageAssetIds.add(layer.refId);
+                }
+            }
+
+            // Text
+            if (layer.ty === 5 || layer.t) hasTextLayer = true;
+        }
+
+        return { layerPointers, usedCompAssetIds, usedImageAssetIds, hasTextLayer };
+    }
+
+    function findLayerByInd(original, container, assetId, ind) {
+        if (container === "root") {
+            const layer = (original.layers || []).find(l => l.ind === ind);
+            return layer ? { container: "root", layer } : null;
+        }
+        const comp = (original.assets || []).find(a => a.id === assetId);
+        if (!comp || !comp.layers) return null;
+        const layer = comp.layers.find(l => l.ind === ind);
+        return layer ? { container: "asset", assetId, layer } : null;
+    }
+
+    // 2. Build New JSON
+    function extractLayerAsLottie(original, layerInd) {
+        // Find the root layer first
+        const selectedLayer = (original.layers || []).find(l => l.ind === layerInd);
+        if (!selectedLayer) return null;
+
+        const closure = collectDependencyClosure(original, { container: "root", layer: selectedLayer });
+
+        // Clone base
+        const newLottie = JSON.parse(JSON.stringify(original));
+        
+        // Filter Root Layers: Keep only those in closure with container='root'
+        const rootInds = new Set(closure.layerPointers.filter(p => p.container === 'root').map(p => p.layer.ind));
+        newLottie.layers = newLottie.layers.filter(l => rootInds.has(l.ind));
+
+        // Filter Assets
+        if (newLottie.assets) {
+            newLottie.assets = newLottie.assets.filter(a => {
+                if (a.layers) return closure.usedCompAssetIds.has(a.id); // Comp
+                return closure.usedImageAssetIds.has(a.id); // Image
+            });
+            
+            // Clean layers inside retained precomps (advanced, skipping for simplicity or full integrity)
+            // For true minimal, we should also filter layers INSIDE assets. 
+            // Current simple logic: keep full asset if ref'd.
+        }
+
+        if (!closure.hasTextLayer) {
+            delete newLottie.fonts;
+            delete newLottie.chars;
+        }
+
+        return newLottie;
+    }
+
+    // --- UI Logic for Layer Export ---
+    function openLayerExportModal(layerIndex) {
+        const layer = flatLayers[layerIndex].rawData;
+        // Generate Preview
+        const extractedJson = extractLayerAsLottie(currentData, layer.ind);
+        layerToExport = extractedJson;
+        
+        document.getElementById('layer-export-name').value = `${currentFileName}_${layer.nm.replace(/\s+/g, '_')}`;
+        
+        // Render small preview
+        const container = document.getElementById('export-layer-preview');
+        container.innerHTML = '';
+        if(exportPreviewAnim) exportPreviewAnim.destroy();
+        
+        exportPreviewAnim = lottie.loadAnimation({
+            container: container,
+            renderer: 'svg',
+            loop: true,
+            autoplay: true,
+            animationData: extractedJson
+        });
+
+        document.getElementById('layer-export-modal').classList.add('open');
+    }
+
+    function closeLayerExportModal() {
+        document.getElementById('layer-export-modal').classList.remove('open');
+        if(exportPreviewAnim) exportPreviewAnim.destroy();
+    }
+
+    function confirmLayerExport() {
+        if(!layerToExport) return;
+        const name = document.getElementById('layer-export-name').value || 'layer_export';
+        saveFile(JSON.stringify(layerToExport), name.endsWith('.json') ? name : name+'.json', 'application/json');
+        closeLayerExportModal();
+    }
+
+    // --- Standard Helpers ---
     function updateTextDeep(obj,newText){if(typeof obj!=='object'||obj===null)return;if(obj.s&&obj.s.t!==undefined)obj.s.t=newText;if(obj.e&&obj.e.t!==undefined)obj.e.t=newText;if(obj.t!==undefined&&typeof obj.t==='string')obj.t=newText;if(Array.isArray(obj))obj.forEach(i=>updateTextDeep(i,newText));else Object.keys(obj).forEach(k=>{if(k==='s'||k==='e'||k==='k')updateTextDeep(obj[k],newText);});}
     function findTextProperty(d){if(!d.t||!d.t.d)return null;if(Array.isArray(d.t.d.k)&&d.t.d.k.length>0&&d.t.d.k[0].s)return d.t.d.k[0].s.t;if(d.t.d.k.s)return d.t.d.k.s.t;return null;}
     
@@ -985,10 +1125,7 @@
         d.nm=t;
         playAnimation(currentData);
         analyzeLayers(currentData);
-        
-        // SYNC CHANGE
         syncEditToPreview();
-        
         closeModal();
     }
     
@@ -1017,41 +1154,25 @@
             const i=new Image();
             i.src=b;
             i.onload=()=>{
-                // --- FIXED: CENTER IMAGE LOGIC ---
-                // Create a canvas with the dimensions of the ORIGINAL asset
                 if(editImageLayerIndex !== -1) {
                     const ref = flatLayers[editImageLayerIndex].refId;
                     const asset = assetsMap[ref];
-                    
-                    // Create canvas with original asset size
                     const canvas = document.createElement('canvas');
-                    canvas.width = asset.w;
-                    canvas.height = asset.h;
+                    canvas.width = asset.w; canvas.height = asset.h;
                     const ctx = canvas.getContext('2d');
-                    
-                    // Calculate center position
                     const x = (asset.w - i.width) / 2;
                     const y = (asset.h - i.height) / 2;
-                    
-                    // Draw new image centered
                     ctx.drawImage(i, x, y);
-                    
-                    // Export centered image as Base64
                     const centeredBase64 = canvas.toDataURL('image/png');
-
-                    // UI Update
                     document.getElementById('img-modal-title').innerText="很棒的修改";
                     document.getElementById('img-placeholder').style.display='none';
                     const p=document.getElementById('img-preview');
                     p.src=centeredBase64; 
                     p.style.display='block';
-                    
                     const s=(f.size/1024).toFixed(1);
                     document.getElementById('img-info').innerText=`原图: ${asset.w}x${asset.h} | 新图: ${i.width}x${i.height} (已居中)`;
                     document.getElementById('img-info').style.display='block';
                     document.getElementById('btn-img-save').classList.remove('btn-hide');
-                    
-                    // Store the CENTERED image data, but keep original W/H metadata
                     newImageData={p:centeredBase64, w:asset.w, h:asset.h}; 
                 }
             };
@@ -1068,19 +1189,10 @@
         const ts=`${now.getHours()}:${now.getMinutes()<10?'0'+now.getMinutes():now.getMinutes()}`;
         editHistory.unshift({type:'image',idx:editImageLayerIndex,assetId:ref,prev:{p:a.p,w:a.w,h:a.h},curr:"Image",name:flatLayers[editImageLayerIndex].nm,time:ts});
         updateHistoryUI();
-        
-        // Update Data
-        a.p=newImageData.p;
-        a.w=newImageData.w;
-        a.h=newImageData.h;
-        a.u="";
-        
+        a.p=newImageData.p; a.w=newImageData.w; a.h=newImageData.h; a.u="";
         playAnimation(currentData);
         analyzeLayers(currentData);
-        
-        // SYNC CHANGE
         syncEditToPreview();
-        
         closeImageModal();
     }
     
@@ -1113,103 +1225,68 @@
         updateHistoryUI();
         playAnimation(currentData);
         analyzeLayers(currentData);
-        
-        // SYNC CHANGE (Undo also needs sync)
         syncEditToPreview();
     }
     
     function handleDirectEdit(){if(currentHighlightIdx===-1)return;const ty=flatLayers[currentHighlightIdx].ty;if(ty===5)openEditModal(currentHighlightIdx);if(ty===2)openImageModal(currentHighlightIdx);}
     
-    // --- New Export Modal Logic ---
+    // Global Export Modal
     function openExportModal() {
         if (!currentData) { alert("请先导入 Lottie 文件"); return; }
         document.getElementById('export-name-input').value = currentFileName;
         document.getElementById('export-modal').classList.add('open');
     }
-    
-    function closeExportModal() {
-        document.getElementById('export-modal').classList.remove('open');
-    }
-    
+    function closeExportModal() { document.getElementById('export-modal').classList.remove('open'); }
     function confirmExport() {
         let name = document.getElementById('export-name-input').value.trim();
         if (!name) name = "lottie_export";
         if (!name.toLowerCase().endsWith('.json')) name += '.json';
-        
-        // Trigger download
-        const jsonStr = JSON.stringify(currentData);
-        const blob = new Blob([jsonStr], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = name;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        
+        saveFile(JSON.stringify(currentData), name, 'application/json');
         closeExportModal();
     }
-
-    // Keep this function but it is now replaced by openExportModal in HTML onclick
     function downloadCurrentJson(){ openExportModal(); }
     
     function copyKeyPath(i){
         navigator.clipboard.writeText(flatLayers[i].nm);
         const t=document.getElementById('toast');
-        t.style.opacity=1;
-        setTimeout(()=>t.style.opacity=0,2000);
+        t.style.opacity=1; // Toast HTML is gone in this ver but kept function just in case
     }
     
     function downloadImage(i){
         const a=assetsMap[flatLayers[i].refId];
         if(a&&a.p.startsWith('data:')){
-            const l=document.createElement('a');
-            l.href=a.p;
-            l.download='img.png';
-            l.click();
-        } else {
-            alert('不可下载');
-        }
+            const l=document.createElement('a'); l.href=a.p; l.download='img.png'; l.click();
+        } else { alert('不可下载'); }
     }
     
+    // Instead of simple download, open modal for layer export
     function downloadLayer(i){
-        saveFile(JSON.stringify(flatLayers[i].rawData),flatLayers[i].nm+'.json','application/json');
+        openLayerExportModal(i);
     }
 
     function formatBytes(b){if(b===0)return'0 B';const k=1024;const i=Math.floor(Math.log(b)/Math.log(k));return parseFloat((b/Math.pow(k,i)).toFixed(1))+['B','KB','MB'][i];}
     
-    // --- Analysis Logic ---
+    // --- Analysis ---
     function analyzeLayers(data) { flatLayers=[];const ls=data.layers||[];ls.forEach((l,i)=>{const s=JSON.stringify(l);let cr=null;if(currentPlatform){const iss=checkLayerDeep(l,currentPlatform);if(iss.length>0)cr=iss[0];}flatLayers.push({idx:i,ind:l.ind,nm:l.nm,ty:l.ty,refId:l.refId,rawData:l,size:s.length,pct:((s.length/totalFileSize)*100).toFixed(1),checkResult:cr});}); if(isSortedBySize)flatLayers.sort((a,b)=>b.size-a.size);else flatLayers.sort((a,b)=>a.idx-b.idx); renderList(); document.querySelectorAll('.check-btn').forEach(b=>b.classList.remove('active-ios','active-android','active-web')); if(currentPlatform==='ios')document.getElementById('btn-ios').classList.add('active-ios');if(currentPlatform==='android')document.getElementById('btn-android').classList.add('active-android');if(currentPlatform==='web')document.getElementById('btn-web').classList.add('active-web'); }
     function toggleSort(){isSortedBySize=!isSortedBySize;analyzeLayers(currentData);}
     
-    // --- RENDER LIST (FIXED: DOM ELEMENTS + EVENT LISTENERS) ---
     function renderList() {
-        const list = document.getElementById('layer-list'); 
-        list.innerHTML = '';
-        
+        const list = document.getElementById('layer-list'); list.innerHTML = '';
         flatLayers.forEach((item, renderIndex) => {
-            const li = document.createElement('li'); 
-            li.className = 'layer-item';
+            const li = document.createElement('li'); li.className = 'layer-item';
             
-            // Highlight Logic
             li.onmouseenter = () => { li.classList.add('selected'); startHighlight(item.idx, item.nm); };
             li.onmouseleave = () => { li.classList.remove('selected'); stopHighlight(); };
 
-            // Status Logic
-            let statusClass = '';
-            let issueText = '';
+            let statusClass = ''; let issueText = '';
             if (currentPlatform && item.checkResult) {
                 if (item.checkResult.level === 'error') statusClass = 'status-error';
                 else if (item.checkResult.level === 'warn') statusClass = 'status-warn';
                 else statusClass = 'status-ok';
                 issueText = item.checkResult.msg;
-            } else if (currentPlatform && !item.checkResult) {
-                statusClass = 'status-ok';
-            }
+            } else if (currentPlatform && !item.checkResult) { statusClass = 'status-ok'; }
             if(statusClass) li.classList.add(statusClass);
 
-            // Icon Logic
             let icon = ICONS.other; let typeCls = '';
             if (item.ty === 2) { icon = ICONS.image; typeCls = 'type-image'; }
             else if (item.ty === 4) { icon = ICONS.shape; typeCls = 'type-shape'; }
@@ -1226,35 +1303,28 @@
                 </div>
             `;
 
-            // Actions - Created via DOM to ensure events attach correctly
             const actionsDiv = document.createElement('div');
             actionsDiv.className = 'layer-actions';
-
             const createBtn = (svg, title, clickHandler) => {
                 const btn = document.createElement('div');
                 btn.className = 'action-btn';
                 if(svg === ICONS.edit) btn.classList.add('edit-btn');
                 btn.innerHTML = svg;
                 btn.title = title;
-                // Crucial: Stop Propagation here
-                btn.onclick = (e) => { 
-                    e.stopPropagation(); 
-                    clickHandler(renderIndex); 
-                };
+                btn.onclick = (e) => { e.stopPropagation(); clickHandler(renderIndex); };
                 return btn;
             };
 
-            if (item.ty === 2) { // Image
+            if (item.ty === 2) { 
                 actionsDiv.appendChild(createBtn(ICONS.edit, '替换图片', openImageModal));
                 actionsDiv.appendChild(createBtn(ICONS.dlImg, '下载图片', downloadImage));
             }
-            else if (item.ty === 5) { // Text
+            else if (item.ty === 5) { 
                 actionsDiv.appendChild(createBtn(ICONS.edit, '修改文字', openEditModal));
                 actionsDiv.appendChild(createBtn(ICONS.copy, '复制名称', copyKeyPath));
             }
-            else { // Others
-                actionsDiv.appendChild(createBtn(ICONS.dlJson, '下载图层', downloadLayer));
-            }
+            // NEW: Export Layer Button
+            actionsDiv.appendChild(createBtn(ICONS.dlJson, '导出此图层', downloadLayer));
 
             li.appendChild(actionsDiv);
             list.appendChild(li);
@@ -1271,3 +1341,4 @@
     function saveFile(c,n,t){const b=new Blob([c],{type:t});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=n;a.click();}
 </script>
 </body>
+
