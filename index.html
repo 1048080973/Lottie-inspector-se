@@ -8,6 +8,7 @@
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='128' fill='%236c5ce7'/%3E%3Cpath d='M160 120v272l232-136z' fill='white'/%3E%3C/svg%3E" type="image/svg+xml">
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         :root {
             --bg-dark: #09090b;
@@ -27,7 +28,10 @@
             --highlight-border: #8b5cf6;
         }
 
-        * { box-sizing: border-box; user-select: none; outline: none; }
+        * { box-sizing: border-box; outline: none; }
+        body, header, .main-container, .layer-panel, .player-controls, .edit-toolbar, .panel-header, .mode-tab, .check-btn, .text-action-btn, .clear-btn, .tool-btn, .canvas-header, .canvas-drop-zone, .mini-btn, .history-header, .status-dot { user-select: none; -webkit-user-select: none; }
+        .layer-name, .layer-meta, .time-display, .issue-text, .hl-label, .history-change, .history-layer-name, .history-time, .modal-title, .modal-warning, #img-info { user-select: text; -webkit-user-select: text; }
+        .btn-hide { display: none !important; }
 
         body {
             margin: 0; padding: 0;
@@ -333,7 +337,7 @@
 </head>
 <body>
 
-<div id="drop-zone"><h2>松开鼠标导入 JSON</h2></div>
+<div id="drop-zone"><h2>松开鼠标导入 .json / .lottie</h2></div>
 
 <!-- Export Modal (Global) -->
 <div id="export-modal" class="modal-overlay">
@@ -428,7 +432,7 @@
             <button class="save-btn" id="save-btn" onclick="openExportModal()">导出 JSON</button>
         </div>
     </div>
-    <input type="file" id="fileInput" accept=".json">
+    <input type="file" id="fileInput" accept=".json,.lottie">
 </header>
 
 <div class="main-container">
@@ -446,14 +450,14 @@
             </div>
             
             <div id="lottie-player" onclick="if(!currentData) document.getElementById('fileInput').click()">
-                <span style="color:#71717a; font-size:13px;">拖拽或点击导入文件</span>
+                <span style="color:#71717a; font-size:13px;">拖拽或点击导入 .json / .lottie</span>
             </div>
             
             <div class="player-controls" id="playerControls">
-                <div class="control-group">
-                    <button class="text-action-btn" onclick="setSpeed(0.5)">0.5x</button>
-                    <button class="text-action-btn active" onclick="setSpeed(1.0)" id="speed-1">1.0x</button>
-                    <button class="text-action-btn" onclick="setSpeed(2.0)">2.0x</button>
+                <div class="control-group" id="speed-group">
+                    <button class="text-action-btn speed-btn" id="speed-05" onclick="setSpeed(0.5)">0.5x</button>
+                    <button class="text-action-btn speed-btn active" id="speed-1" onclick="setSpeed(1.0)">1.0x</button>
+                    <button class="text-action-btn speed-btn" id="speed-2" onclick="setSpeed(2.0)">2.0x</button>
                 </div>
                 <button class="play-btn" id="playToggle" onclick="togglePlay()"><svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg></button>
                 <div class="scrubber-container">
@@ -558,7 +562,15 @@
     };
 
     // --- Keyboard Control ---
+    function isEditingField(el) {
+        if (!el) return false;
+        const tag = el.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+        if (el.isContentEditable) return true;
+        return false;
+    }
     document.addEventListener('keydown', (e) => {
+        if (isEditingField(e.target)) return;
         if (e.code === 'Space') {
             e.preventDefault(); 
             if(currentMode === 'standard') togglePlay();
@@ -577,7 +589,20 @@
     const dragHandle = document.getElementById('history-drag-handle');
     let isSideDragging = false, sideOffsetX = 0, sideOffsetY = 0;
     dragHandle.addEventListener('mousedown', (e) => { isSideDragging = true; sideOffsetX = e.clientX - sidebar.offsetLeft; sideOffsetY = e.clientY - sidebar.offsetTop; dragHandle.style.cursor = 'grabbing'; });
-    document.addEventListener('mousemove', (e) => { if (isSideDragging) { sidebar.style.left = (e.clientX - sideOffsetX) + 'px'; sidebar.style.top = (e.clientY - sideOffsetY) + 'px'; } });
+    document.addEventListener('mousemove', (e) => {
+        if (!isSideDragging) return;
+        const parent = sidebar.offsetParent || document.body;
+        const parentRect = parent.getBoundingClientRect();
+        const margin = 8;
+        const maxLeft = Math.max(0, parentRect.width - sidebar.offsetWidth - margin);
+        const maxTop = Math.max(0, parentRect.height - sidebar.offsetHeight - margin);
+        let nextLeft = e.clientX - sideOffsetX;
+        let nextTop = e.clientY - sideOffsetY;
+        nextLeft = Math.min(Math.max(margin, nextLeft), maxLeft);
+        nextTop = Math.min(Math.max(margin, nextTop), maxTop);
+        sidebar.style.left = nextLeft + 'px';
+        sidebar.style.top = nextTop + 'px';
+    });
     document.addEventListener('mouseup', () => { isSideDragging = false; dragHandle.style.cursor = 'move'; });
 
     const resizer = document.getElementById('resizer');
@@ -597,11 +622,61 @@
     fileInput.addEventListener('change', e => handleFiles(e.target.files));
 
     function handleFiles(files) {
-        if(files[0] && files[0].name.endsWith('.json')) {
-            currentFileName = files[0].name.replace('.json', ''); // Store filename
+        const f = files && files[0];
+        if (!f) return;
+        const name = f.name.toLowerCase();
+        if (name.endsWith('.json')) {
+            currentFileName = f.name.replace(/\.json$/i, '');
             const r = new FileReader();
             r.onload = e => parseJSON(e.target.result);
-            r.readAsText(files[0]);
+            r.readAsText(f);
+        } else if (name.endsWith('.lottie')) {
+            currentFileName = f.name.replace(/\.lottie$/i, '');
+            readDotLottie(f);
+        } else {
+            alert('仅支持 .json 或 .lottie 文件');
+        }
+    }
+
+    // --- dotLottie (.lottie) ---
+    // 规范参考：.lottie 是 zip 包，含 manifest.json + animations/<id>.json + images/<file>
+    async function readDotLottie(file) {
+        if (typeof JSZip === 'undefined') { alert('JSZip 未加载，无法解析 .lottie'); return; }
+        try {
+            const buf = await file.arrayBuffer();
+            const zip = await JSZip.loadAsync(buf);
+
+            const manifestEntry = zip.file('manifest.json');
+            if (!manifestEntry) { alert('.lottie 包内缺少 manifest.json'); return; }
+            const manifest = JSON.parse(await manifestEntry.async('string'));
+            const anims = manifest.animations || [];
+            if (!anims.length) { alert('.lottie 包内未声明动画'); return; }
+
+            const animId = anims[0].id;
+            const animEntry = zip.file(`animations/${animId}.json`);
+            if (!animEntry) { alert(`.lottie 包内找不到 animations/${animId}.json`); return; }
+            const animJson = JSON.parse(await animEntry.async('string'));
+
+            if (Array.isArray(animJson.assets)) {
+                await Promise.all(animJson.assets.map(async (asset) => {
+                    if (!asset || !asset.p || !asset.p.length) return;
+                    if (/^data:/.test(asset.p)) return;
+                    const imgName = asset.p;
+                    const candidate = zip.file(`images/${imgName}`) || zip.file(imgName);
+                    if (!candidate) return;
+                    const base64 = await candidate.async('base64');
+                    const ext = (imgName.split('.').pop() || 'png').toLowerCase();
+                    const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : (ext === 'webp' ? 'image/webp' : 'image/png');
+                    asset.p = `data:${mime};base64,${base64}`;
+                    asset.u = '';
+                    asset.e = 1;
+                }));
+            }
+
+            parseJSON(JSON.stringify(animJson));
+        } catch (err) {
+            console.error(err);
+            alert('.lottie 解析失败：' + err.message);
         }
     }
 
@@ -610,7 +685,7 @@
         if(animInstance) animInstance.destroy();
         currentData = null; flatLayers = []; editHistory = []; updateHistoryUI(); currentPlatform = null;
         currentFileName = 'lottie';
-        document.getElementById('lottie-player').innerHTML = '<span style="color:#71717a;font-size:13px">拖拽或点击导入文件</span>';
+        document.getElementById('lottie-player').innerHTML = '<span style="color:#71717a;font-size:13px">拖拽或点击导入 .json / .lottie</span>';
         document.getElementById('layer-list').innerHTML = '';
         document.getElementById('file-stats').innerText = 'Waiting...';
         document.getElementById('save-btn').style.display = 'none';
@@ -618,8 +693,12 @@
         document.querySelector('.preview-area').classList.remove('has-file');
         document.getElementById('highlight-box').style.display = 'none';
         document.querySelectorAll('.check-btn').forEach(b => b.classList.remove('active-ios', 'active-android', 'active-web'));
-        if(currentMode === 'canvas') toggleEditMode();
+        canvases.forEach(c => { if (c.anim) c.anim.destroy(); });
         canvases = [];
+        selectedCanvasId = null;
+        const canvasContainer = document.getElementById('edit-canvas-container');
+        if (canvasContainer) canvasContainer.innerHTML = '';
+        if(currentMode === 'canvas') switchMode('standard');
     }
 
     function parseJSON(str) {
@@ -645,10 +724,9 @@
     function playAnimation(data) {
         const c = document.getElementById('lottie-player'); c.innerHTML = '';
         if(animInstance) animInstance.destroy();
-        const freshData = JSON.parse(JSON.stringify(data));
         animInstance = lottie.loadAnimation({
             container: c, renderer: 'svg', loop: true, autoplay: true, 
-            animationData: freshData
+            animationData: data
         });
         isPlaying = true; updatePlayIcon();
         animInstance.addEventListener('DOMLoaded', () => { document.getElementById('animScrubber').max = animInstance.totalFrames; });
@@ -660,18 +738,20 @@
                  scrubber.style.setProperty('--progress', `${progress}%`);
                  updateTimeDisplay(e.currentTime); 
              } 
-             const controls = document.querySelector('.player-controls');
-             if (controls) {
-             }
         });
-        document.querySelector('.player-controls').addEventListener('mousemove', (e) => {
+    }
+
+    (function bindPlayerControlsMouse() {
+        const controls = document.querySelector('.player-controls');
+        if (!controls) return;
+        controls.addEventListener('mousemove', (e) => {
             const rect = e.currentTarget.getBoundingClientRect();
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
             e.currentTarget.style.setProperty('--mouse-x', `${x}px`);
             e.currentTarget.style.setProperty('--mouse-y', `${y}px`);
         });
-    }
+    })();
     const scrub = document.getElementById('animScrubber');
     scrub.onmousedown = () => { isScrubbing = true; if(isPlaying) animInstance.pause(); };
     scrub.onmouseup = () => { isScrubbing = false; if(isPlaying) animInstance.play(); };
@@ -684,8 +764,38 @@
     };
 
     function togglePlay() { if(!animInstance) return; if(isPlaying) animInstance.pause(); else animInstance.play(); isPlaying = !isPlaying; updatePlayIcon(); }
+
+    function rebuildAnimationPreservingState() {
+        let frame = 0;
+        let wasPlaying = isPlaying;
+        if (animInstance) {
+            frame = animInstance.currentFrame || 0;
+            wasPlaying = !animInstance.isPaused;
+        }
+        playAnimation(currentData);
+        const resume = () => {
+            if (!animInstance) return;
+            try { animInstance.goToAndStop(frame, true); } catch (err) {}
+            if (wasPlaying) { animInstance.play(); isPlaying = true; }
+            else { animInstance.pause(); isPlaying = false; }
+            updatePlayIcon();
+            if (animInstance.setSpeed) animInstance.setSpeed(playSpeed);
+        };
+        if (animInstance) animInstance.addEventListener('DOMLoaded', resume);
+    }
     function updatePlayIcon() { document.getElementById('playToggle').innerHTML = isPlaying ? ICONS.pause : ICONS.play; }
-    function setSpeed(s) { if(!animInstance) return; playSpeed = s; animInstance.setSpeed(s); document.querySelectorAll('.text-action-btn').forEach(b => b.classList.remove('active')); if(s===0.5) document.querySelectorAll('.text-action-btn')[0].classList.add('active'); if(s===1) document.querySelectorAll('.text-action-btn')[1].classList.add('active'); if(s===2) document.querySelectorAll('.text-action-btn')[2].classList.add('active'); }
+    function setSpeed(s) {
+        if(!animInstance) return;
+        playSpeed = s;
+        animInstance.setSpeed(s);
+        document.querySelectorAll('#speed-group .speed-btn').forEach(b => b.classList.remove('active'));
+        const map = { 0.5: 'speed-05', 1: 'speed-1', 2: 'speed-2' };
+        const id = map[s];
+        if (id) {
+            const btn = document.getElementById(id);
+            if (btn) btn.classList.add('active');
+        }
+    }
     function updateTimeDisplay(f) { 
         if(!animInstance) return; 
         const fps = animInstance.frameRate||30; 
@@ -718,7 +828,7 @@
                  createCanvas(375, 812);
             }
             if (canvases.length > 0 && currentData) {
-                syncEditToPreview();
+                flushDirtyCanvases();
             }
             document.getElementById('edit-workspace').addEventListener('wheel', handleZoom, { passive: false });
         } else { 
@@ -732,7 +842,7 @@
     }
 
     function handleZoom(e) {
-        if (e.ctrlKey || e.metaKey || e.deltaY) {
+        if ((e.ctrlKey || e.metaKey) && e.deltaY !== 0) {
             e.preventDefault();
             const delta = e.deltaY > 0 ? 0.9 : 1.1;
             zoomLevel *= delta;
@@ -746,23 +856,46 @@
         container.style.transform = `translate(${panState.offX}px, ${panState.offY}px) scale(${zoomLevel})`;
     }
 
+    const PAN_THRESHOLD = 4;
     function handleWorkspaceClick(e) {
         if (e.target.id === 'edit-workspace' || e.target.id === 'edit-canvas-container') {
             selectedCanvasId = null;
             renderEditCanvases();
         }
         if (!e.target.closest('.mobile-canvas') && !e.target.closest('.tool-btn')) {
-            startPan(e);
+            armPan(e);
         }
     }
 
-    function startPan(e) {
+    function armPan(e) {
+        panState.isPanning = false;
+        panState.armed = true;
+        panState.startX = e.clientX;
+        panState.startY = e.clientY;
+        document.addEventListener('mousemove', maybeStartPan);
+        document.addEventListener('mouseup', cancelArmPan);
+    }
+
+    function maybeStartPan(e) {
+        if (!panState.armed) return;
+        const dx = e.clientX - panState.startX;
+        const dy = e.clientY - panState.startY;
+        if (Math.abs(dx) < PAN_THRESHOLD && Math.abs(dy) < PAN_THRESHOLD) return;
+        panState.armed = false;
+        document.removeEventListener('mousemove', maybeStartPan);
+        document.removeEventListener('mouseup', cancelArmPan);
         panState.isPanning = true;
         panState.startX = e.clientX;
         panState.startY = e.clientY;
         document.getElementById('edit-workspace').style.cursor = 'grabbing';
         document.addEventListener('mousemove', doPan);
         document.addEventListener('mouseup', stopPan);
+    }
+
+    function cancelArmPan() {
+        panState.armed = false;
+        document.removeEventListener('mousemove', maybeStartPan);
+        document.removeEventListener('mouseup', cancelArmPan);
     }
 
     function doPan(e) {
@@ -837,7 +970,6 @@
                     e.stopPropagation();
                     selectCanvas(c.id);
                     draggedCanvasId = c.id;
-                    const matrix = new WebKitCSSMatrix(window.getComputedStyle(el).transform);
                     dragOffset.startX = e.clientX;
                     dragOffset.startY = e.clientY;
                     dragOffset.initLeft = c.x;
@@ -954,10 +1086,25 @@
         }
     }
 
+    function markCanvasesDirty() {
+        canvases.forEach(c => { c.dirty = true; });
+        if (currentMode === 'canvas') flushDirtyCanvases();
+    }
+    function flushDirtyCanvases() {
+        if (!currentData) return;
+        canvases.forEach(c => {
+            if (c.dirty) {
+                c.animationData = JSON.parse(JSON.stringify(currentData));
+                c.dirty = false;
+                renderLottieInstance(c);
+            }
+        });
+    }
     function syncEditToPreview() {
         if (!currentData || canvases.length === 0) return;
         canvases.forEach(c => {
             c.animationData = JSON.parse(JSON.stringify(currentData)); 
+            c.dirty = false;
             renderLottieInstance(c);
         });
     }
@@ -1123,9 +1270,10 @@
         updateHistoryUI();
         if(d.t&&d.t.d&&d.t.d.k)updateTextDeep(d.t.d.k,t);
         d.nm=t;
-        playAnimation(currentData);
+        invalidateLayerSizeCache(d);
+        rebuildAnimationPreservingState();
         analyzeLayers(currentData);
-        syncEditToPreview();
+        markCanvasesDirty();
         closeModal();
     }
     
@@ -1190,9 +1338,10 @@
         editHistory.unshift({type:'image',idx:editImageLayerIndex,assetId:ref,prev:{p:a.p,w:a.w,h:a.h},curr:"Image",name:flatLayers[editImageLayerIndex].nm,time:ts});
         updateHistoryUI();
         a.p=newImageData.p; a.w=newImageData.w; a.h=newImageData.h; a.u="";
-        playAnimation(currentData);
+        invalidateLayerSizeCache(flatLayers[editImageLayerIndex].rawData);
+        rebuildAnimationPreservingState();
         analyzeLayers(currentData);
-        syncEditToPreview();
+        markCanvasesDirty();
         closeImageModal();
     }
     
@@ -1223,9 +1372,11 @@
         }
         editHistory.splice(i,1);
         updateHistoryUI();
-        playAnimation(currentData);
+        if(r.type==='text' && flatLayers[r.idx]) invalidateLayerSizeCache(flatLayers[r.idx].rawData);
+        else if(r.type==='image' && flatLayers[r.idx]) invalidateLayerSizeCache(flatLayers[r.idx].rawData);
+        rebuildAnimationPreservingState();
         analyzeLayers(currentData);
-        syncEditToPreview();
+        markCanvasesDirty();
     }
     
     function handleDirectEdit(){if(currentHighlightIdx===-1)return;const ty=flatLayers[currentHighlightIdx].ty;if(ty===5)openEditModal(currentHighlightIdx);if(ty===2)openImageModal(currentHighlightIdx);}
@@ -1267,7 +1418,45 @@
     function formatBytes(b){if(b===0)return'0 B';const k=1024;const i=Math.floor(Math.log(b)/Math.log(k));return parseFloat((b/Math.pow(k,i)).toFixed(1))+['B','KB','MB'][i];}
     
     // --- Analysis ---
-    function analyzeLayers(data) { flatLayers=[];const ls=data.layers||[];ls.forEach((l,i)=>{const s=JSON.stringify(l);let cr=null;if(currentPlatform){const iss=checkLayerDeep(l,currentPlatform);if(iss.length>0)cr=iss[0];}flatLayers.push({idx:i,ind:l.ind,nm:l.nm,ty:l.ty,refId:l.refId,rawData:l,size:s.length,pct:((s.length/totalFileSize)*100).toFixed(1),checkResult:cr});}); if(isSortedBySize)flatLayers.sort((a,b)=>b.size-a.size);else flatLayers.sort((a,b)=>a.idx-b.idx); renderList(); document.querySelectorAll('.check-btn').forEach(b=>b.classList.remove('active-ios','active-android','active-web')); if(currentPlatform==='ios')document.getElementById('btn-ios').classList.add('active-ios');if(currentPlatform==='android')document.getElementById('btn-android').classList.add('active-android');if(currentPlatform==='web')document.getElementById('btn-web').classList.add('active-web'); }
+    function getLayerSize(l) {
+        if (typeof l.__cachedSize === 'number') return l.__cachedSize;
+        const size = JSON.stringify(l).length;
+        try { Object.defineProperty(l, '__cachedSize', { value: size, writable: true, configurable: true, enumerable: false }); }
+        catch (e) { l.__cachedSize = size; }
+        return size;
+    }
+    function invalidateLayerSizeCache(l) {
+        if (!l) return;
+        if ('__cachedSize' in l) delete l.__cachedSize;
+        if (currentData) {
+            try { totalFileSize = JSON.stringify(currentData).length; } catch (e) {}
+        }
+    }
+    function analyzeLayers(data) {
+        flatLayers = [];
+        const ls = data.layers || [];
+        ls.forEach((l, i) => {
+            const s = getLayerSize(l);
+            let cr = null;
+            if (currentPlatform) {
+                const iss = checkLayerDeep(l, currentPlatform);
+                if (iss.length > 0) cr = iss[0];
+            }
+            flatLayers.push({
+                idx: i, ind: l.ind, nm: l.nm, ty: l.ty, refId: l.refId,
+                rawData: l, size: s,
+                pct: totalFileSize ? ((s / totalFileSize) * 100).toFixed(1) : '0',
+                checkResult: cr
+            });
+        });
+        if (isSortedBySize) flatLayers.sort((a, b) => b.size - a.size);
+        else flatLayers.sort((a, b) => a.idx - b.idx);
+        renderList();
+        document.querySelectorAll('.check-btn').forEach(b => b.classList.remove('active-ios', 'active-android', 'active-web'));
+        if (currentPlatform === 'ios') document.getElementById('btn-ios').classList.add('active-ios');
+        if (currentPlatform === 'android') document.getElementById('btn-android').classList.add('active-android');
+        if (currentPlatform === 'web') document.getElementById('btn-web').classList.add('active-web');
+    }
     function toggleSort(){isSortedBySize=!isSortedBySize;analyzeLayers(currentData);}
     
     function renderList() {
@@ -1341,3 +1530,4 @@
     function saveFile(c,n,t){const b=new Blob([c],{type:t});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=n;a.click();}
 </script>
 </body>
+</html>
